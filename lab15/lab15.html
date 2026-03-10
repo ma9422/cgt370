@@ -1,0 +1,174 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN">
+<html lang="en">
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lab 13</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=us-ascii" />
+    <style>
+      svg{
+        border:1px solid black;
+      }
+    </style>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+  </head>
+  <body>
+    <script>
+      const fetchData = async () => {
+        try {
+          const geoData = await d3.json(
+            "https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/master/countries.geojson"
+          );
+          const data = await d3.csv("aiddata.csv");
+          console.log(data);
+          drawDotmap(geoData, data);
+        } catch (error) {
+          console.error("Error fetching data:", error);
+        }
+      };
+      function drawDotmap(geoData, data) {
+        // Convert fields that should be numbers once up front.
+        data.forEach((d) => {
+          d.commitment_amount_usd_constant = +d.commitment_amount_usd_constant;
+          d.donor_lon = +d.donor_lon;
+          d.donor_lat = +d.donor_lat;
+          d.recipient_lon = +d.recipient_lon;
+          d.recipient_lat = +d.recipient_lat;
+        });
+
+        const rollupData = d3.rollup(
+          data,
+          (v) => {
+            return {
+              amount: d3.sum(v, (d) => d.commitment_amount_usd_constant), // Sum donations
+              donor_lon: v[0].donor_lon, // Use first donor lat
+              donor_lat: v[0].donor_lat, // Use first donor lon
+              recipients: v.map((d) => ({
+                country: d.recipient,
+                lat: d.recipient_lat,
+                lon: d.recipient_lon,
+              })), // Collect recipient details into an array
+            };
+          },
+          (d) => d.donor
+        );
+        const rollupArray = Array.from(rollupData, ([key, value]) => ({
+          donor: key,
+          amount: value.amount,
+          donor_lat: value.donor_lat,
+          donor_lon: value.donor_lon,
+          recipients: value.recipients,
+        }));
+        console.log(rollupArray);
+        const width = 900;
+        const height = 600;
+
+        const svg = d3
+          .select("body")
+          .append("svg")
+          .attr("width", width)
+          .attr("height", height);
+
+        // Keep all zoomable content inside one group.
+        const g = svg.append("g");
+
+        // Todo: create a projection with appropriate scale and translation.
+
+        // Todo: create a path generator using the projection.
+
+        // Helpful scale reference for students: data -> visual size.
+        const radiusScale = d3
+          .scaleSqrt()
+          .domain(d3.extent(rollupArray, (d) => d.amount))
+          .range([3, 22]);
+
+        // Tooltip reference: hidden by default, positioned near cursor.
+        const tooltip = d3
+          .select("body")
+          .append("div")
+          .attr("id", "tooltip")
+          .style("visibility", "hidden")
+          .style("position", "absolute")
+          .style("background", "#fff")
+          .style("border", "1px solid #000")
+          .style("padding", "8px")
+          .style("font", "12px sans-serif")
+          .style("pointer-events", "none");
+
+        // World map layer.
+        g
+          .selectAll(".country")
+          //Todo: bind geoData.features(Hint: filtering out Antarctica if desired).
+          .data()
+          .join("path")
+          .attr("class", "country")
+          .attr("d", path)
+          .attr("fill", "#f3f3f3")
+          .attr("stroke", "#333")
+          .attr("stroke-width", 0.8);
+
+        // Dedicated layers make interactions easier to manage.
+        const lineLayer = g.append("g").attr("class", "flow-lines");
+        const donorLayer = g.append("g").attr("class", "donors");
+        const recipientLayer = g.append("g").attr("class", "recipients");
+
+        donorLayer
+          .selectAll("circle")
+          .data(rollupArray)
+          .join("circle")
+          //Todo: set cx, cy based on projection of donor lon/lat, radius based on amount, and fill/stroke as desired.
+
+          .on("mouseover", (event, d) => {
+            tooltip
+              .style("visibility", "visible")
+              .style("top", event.pageY + 10 + "px")
+              .style("left", event.pageX + 10 + "px")
+              //Todo: set tooltip content to show donor name and total amount donated.
+              .html();
+
+            // Draw donor -> recipient connections for hovered donor.
+            lineLayer
+              .selectAll("line")
+              //Todo: bind data to donor's recipients array.
+              .data()
+              .join("line")
+              //Todo: set x1/y1 based on donor projection, x2/y2 based on recipient projection, and stroke as desired.
+              .attr("stroke", "#111")
+              .attr("stroke-opacity", 0.25)
+              .attr("stroke-width", 1);
+
+            // Recipient endpoints.
+            recipientLayer
+              .selectAll("circle")
+              .data(d.recipients)
+              .join("circle")
+              .attr("cx", (r) => projection([r.lon, r.lat])[0])
+              .attr("cy", (r) => projection([r.lon, r.lat])[1])
+              .attr("r", 2)
+              .attr("fill", "#111")
+              .attr("opacity", 0.65);
+          })
+          .on("mousemove", (event) => {
+            tooltip
+              .style("top", event.pageY + 10 + "px")
+              .style("left", event.pageX + 10 + "px");
+          })
+          .on("mouseout", () => {
+            tooltip.style("visibility", "hidden");
+            lineLayer.selectAll("line").remove();
+            recipientLayer.selectAll("circle").remove();
+          });
+
+        // Zoom and pan reference.
+        const zoom = d3
+          .zoom()
+          .scaleExtent([1, 8])
+          .on("zoom", (event) => {
+            g.attr("transform", event.transform);
+          });
+
+        svg.call(zoom);       
+      }
+      fetchData();
+    </script>
+  </body>
+</html>
