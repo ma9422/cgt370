@@ -1,0 +1,258 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN">
+<html lang="en">
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lab 16</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=us-ascii" />
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        background: #f5f5f5;
+        font-family: Arial, sans-serif;
+        padding: 24px;
+        color: #333;
+      }
+
+      h1 { font-size: 1.4rem; margin-bottom: 4px; }
+      .sub { font-size: 0.85rem; color: #666; margin-bottom: 20px; }
+
+      .layout {
+        display: flex;
+        gap: 20px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .map-side { flex: 1; min-width: 500px; }
+      .bar-side { width: 280px; }
+
+      svg#choropleth-map { border: 1px solid #ccc; background: #dceef5; display: block; }
+
+      .country { stroke: #fff; stroke-width: 0.5px; }
+      .country:hover { stroke: #333; stroke-width: 1.5px; cursor: pointer; }
+      .no-data { fill: #ccc; }
+
+      #tooltip {
+        position: fixed;
+        background: white;
+        border: 1px solid #aaa;
+        border-radius: 4px;
+        padding: 8px 12px;
+        font-size: 0.8rem;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.1s;
+        z-index: 99;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      }
+
+      #tooltip strong { display: block; font-size: 0.95rem; margin-bottom: 2px; }
+
+      #sidebar-title { font-size: 0.85rem; font-weight: bold; margin-bottom: 8px; color: #444; }
+
+      #country-info { margin-bottom: 16px; font-size: 0.85rem; color: #555; min-height: 50px; }
+      #country-info .name { font-size: 1rem; font-weight: bold; color: #222; }
+      #country-info .score { font-size: 1.4rem; font-weight: bold; color: #2a6496; }
+      #country-info .rank { color: #888; font-size: 0.8rem; }
+    </style>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+  </head>
+  <body>
+    <h1>World Happiness Report 2019</h1>
+    <p class="sub">Hover over a country to see its happiness score and factor breakdown.</p>
+
+    <div class="layout">
+      <div class="map-side">
+        <svg id="choropleth-map" width="700" height="440"></svg>
+        <svg id="legend" width="700" height="40" style="display:block; margin-top:6px;"></svg>
+      </div>
+
+      <div class="bar-side">
+        <div id="sidebar-title">Factor Breakdown</div>
+        <div id="country-info">
+          <span style="color:#aaa; font-size:0.8rem;">Hover a country to begin</span>
+        </div>
+        <svg id="bar-graph" width="280" height="10" style="display:block;"></svg>
+      </div>
+    </div>
+
+    <div id="tooltip"></div>
+
+    <script>
+      // Red → orange → yellow → light blue → blue (low → high happiness)
+      const colorScale = d3.scaleQuantize()
+        .domain([2.5, 7.8])
+        .range(["#d73027","#f46d43","#fdae61","#fee090","#e0f3f8","#abd9e9","#74add1","#313695"]);
+
+      const nameMap = new Map([
+        ["United States of America", "United States"],
+        ["Russia", "Russian Federation"],
+        ["Republic of the Congo", "Congo, Rep."],
+        ["Democratic Republic of the Congo", "Congo, Dem. Rep."],
+        ["Ivory Coast", "Cote d'Ivoire"],
+        ["South Korea", "Korea, South"],
+        ["United Republic of Tanzania", "Tanzania"],
+        ["Syrian Arab Republic", "Syria"],
+      ]);
+
+      const labelMap = {
+        "GDP": "GDP",
+        "Social_support": "Social support",
+        "Healthy_life_expectancy": "Life expectancy",
+        "Freedom_to_make_life_choices": "Freedom",
+        "Perceptions_of_corruption": "Corruption",
+        "Generosity": "Generosity"
+      };
+
+      const fetchData = async () => {
+        try {
+          const geoData = await d3.json(
+            "https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/master/countries.geojson"
+          );
+          const data = await d3.csv("2019.csv");
+          drawChoroplethmap(geoData, data);
+          drawLegend();
+        } catch (error) {
+          console.error("Error:", error);
+        }
+      };
+
+      function drawChoroplethmap(geoData, csvData) {
+        const width = 700, height = 440;
+        const svg = d3.select("#choropleth-map");
+        const dataMap = new Map();
+        csvData.forEach(d => dataMap.set(d.Country, d));
+
+        const projection = d3.geoNaturalEarth1()
+          .scale(width / 6.5)
+          .translate([width / 2, height / 2]);
+
+        const path = d3.geoPath().projection(projection);
+        const tooltip = d3.select("#tooltip");
+
+        svg.selectAll("path")
+          .data(geoData.features)
+          .join("path")
+          .attr("class", d => {
+            const geoName = d.properties.ADMIN || d.properties.name;
+            const csvName = nameMap.get(geoName) || geoName;
+            return (dataMap.has(geoName) || dataMap.has(csvName)) ? "country" : "country no-data";
+          })
+          .attr("d", path)
+          .attr("fill", d => {
+            const geoName = d.properties.ADMIN || d.properties.name;
+            const csvName = nameMap.get(geoName) || geoName;
+            const row = dataMap.get(geoName) || dataMap.get(csvName);
+            return row ? colorScale(+row.Score) : "#ccc";
+          })
+s          .on("mousemove", (event, d) => {
+            const geoName = d.properties.ADMIN || d.properties.name;
+            const csvName = nameMap.get(geoName) || geoName;
+            const row = dataMap.get(geoName) || dataMap.get(csvName);
+            if (!row) return;
+
+            tooltip.style("opacity", 1)
+              .style("left", (event.clientX + 12) + "px")
+              .style("top", (event.clientY - 36) + "px")
+              .html(`<strong>${row.Country}</strong>Score: ${(+row.Score).toFixed(3)} &nbsp;|&nbsp; Rank #${row["Overall rank"]}`);
+
+            document.getElementById("country-info").innerHTML = `
+              <div class="name">${row.Country}</div>
+              <div class="score">${(+row.Score).toFixed(3)}</div>
+              <div class="rank">Rank #${row["Overall rank"]} of 156</div>
+            `;
+            drawBargraph(row);
+          })
+          .on("mouseleave", () => {
+            tooltip.style("opacity", 0);
+          });
+      }
+
+      function drawLegend() {
+        const svg = d3.select("#legend");
+        const range = colorScale.range();
+        const domain = colorScale.domain();
+        const swatchW = 40;
+        const startX = 100;
+
+        svg.append("text")
+          .attr("x", startX - 6).attr("y", 22)
+          .attr("text-anchor", "end").attr("font-size", "11px").attr("fill", "#555")
+          .text("Unhappy");
+
+        range.forEach((color, i) => {
+          svg.append("rect")
+            .attr("x", startX + i * swatchW).attr("y", 10)
+            .attr("width", swatchW).attr("height", 16)
+            .attr("fill", color);
+        });
+
+        svg.append("text")
+          .attr("x", startX + range.length * swatchW + 6).attr("y", 22)
+          .attr("font-size", "11px").attr("fill", "#555").text("Happy");
+
+        [domain[0], domain[1]].forEach((val, i) => {
+          svg.append("text")
+            .attr("x", startX + i * range.length * swatchW).attr("y", 36)
+            .attr("text-anchor", "middle").attr("font-size", "10px").attr("fill", "#777")
+            .text(val.toFixed(1));
+        });
+
+        const nx = startX + range.length * swatchW + 80;
+        svg.append("rect").attr("x", nx).attr("y", 10).attr("width", 16).attr("height", 16).attr("fill", "#ccc");
+        svg.append("text").attr("x", nx + 20).attr("y", 22).attr("font-size", "11px").attr("fill", "#555").text("No data");
+      }
+
+      function drawBargraph(data) {
+        d3.select("#bar-graph").selectAll("*").remove();
+        if (!data) return;
+
+        const skip = new Set(["Country", "Score", "Overall rank"]);
+        const factors = [];
+        for (const key in data) {
+          if (!skip.has(key)) {
+            factors.push({ Factor: labelMap[key] || key, Score: +data[key] });
+          }
+        }
+        factors.sort((a, b) => b.Score - a.Score);
+
+        const margin = { top: 6, right: 44, bottom: 6, left: 72 };
+        const barH = 20, gap = 5;
+        const totalH = factors.length * (barH + gap) + margin.top + margin.bottom;
+        const totalW = 280;
+        const innerW = totalW - margin.left - margin.right;
+
+        d3.select("#bar-graph").attr("height", totalH);
+        const g = d3.select("#bar-graph").append("g")
+          .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const x = d3.scaleLinear()
+          .domain([0, d3.max(factors, d => d.Score) * 1.1])
+          .range([0, innerW]);
+
+        factors.forEach((d, i) => {
+          const y = i * (barH + gap);
+
+          g.append("text")
+            .attr("x", -4).attr("y", y + barH / 2 + 4)
+            .attr("text-anchor", "end").attr("font-size", "10px").attr("fill", "#555")
+            .text(d.Factor);
+
+          g.append("rect")
+            .attr("x", 0).attr("y", y).attr("width", 0).attr("height", barH)
+            .attr("fill", colorScale(+data.Score)).attr("rx", 2)
+            .transition().duration(350).ease(d3.easeCubicOut)
+            .attr("width", x(d.Score));
+
+          g.append("text")
+            .attr("x", x(d.Score) + 3).attr("y", y + barH / 2 + 4)
+            .attr("font-size", "9px").attr("fill", "#444")
+            .text(d.Score.toFixed(2));
+        });
+      }
+
+      fetchData();
+    </script>
+  </body>
+</html>
