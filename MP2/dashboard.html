@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sleep Health &amp; Lifestyle</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #f1f5f9; color: #1e293b; font-family: system-ui, -apple-system, sans-serif; padding: 1rem; min-height: 100vh; font-size: 14px; }
+  h1 { font-size: 1.25rem; font-weight: 600; text-align: center; margin-bottom: 0.15rem; color: #0f172a; }
+  .subtitle { text-align: center; font-size: 0.72rem; color: #64748b; margin-bottom: 0.85rem; }
+  .accent { color: #3b82f6; }
+
+  /* FILTERS */
+  .filters { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.6rem 0.9rem; margin-bottom: 0.7rem; display: flex; gap: 0.7rem; flex-wrap: wrap; align-items: center; }
+  select { background: #fff; color: #1e293b; border: 1px solid #cbd5e1; border-radius: 5px; padding: 4px 8px; font-size: 0.72rem; cursor: pointer; outline: none; font-family: inherit; }
+  select:hover, select:focus { border-color: #3b82f6; }
+  .toggle-btn { background: #fff; border: 1px solid #cbd5e1; color: #64748b; border-radius: 5px; padding: 3px 10px; font-size: 0.72rem; cursor: pointer; transition: all 0.12s; font-family: inherit; }
+  .toggle-btn.active-none { background: #f0fdf4; border-color: #22c55e; color: #15803d; }
+  .toggle-btn.active-insomnia { background: #fff7ed; border-color: #f97316; color: #c2410c; }
+  .toggle-btn.active-apnea { background: #fef2f2; border-color: #ef4444; color: #b91c1c; }
+  .reset-btn { background: #fff; border: 1px solid #cbd5e1; color: #64748b; border-radius: 5px; padding: 3px 10px; font-size: 0.72rem; cursor: pointer; font-family: inherit; }
+  .reset-btn:hover { border-color: #3b82f6; color: #3b82f6; }
+  input[type=range] { accent-color: #3b82f6; cursor: pointer; width: 70px; }
+  .age-label { font-size: 0.72rem; color: #64748b; }
+
+  /* GRID */
+  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: auto auto; gap: 0.65rem; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.75rem; }
+  .card-title { font-size: 0.68rem; color: #3b82f6; font-weight: 700; margin-bottom: 0.15rem; letter-spacing: 0.05em; text-transform: uppercase; }
+  .card-sub { font-size: 0.63rem; color: #94a3b8; margin-bottom: 0.45rem; }
+
+  /* SCATTERPLOT */
+  #scatter-svg { width: 100%; overflow: visible; }
+  .dot { transition: opacity 0.2s; cursor: pointer; }
+  .dot:hover { stroke: #1e293b; stroke-width: 1.5; }
+
+  /* BAR CHART */
+  .occ-row { cursor: pointer; transition: opacity 0.2s; margin-bottom: 6px; }
+  .occ-row:hover { opacity: 1 !important; }
+  .occ-name { font-size: 0.62rem; color: #1e293b; margin-bottom: 2px; }
+  .occ-count { font-size: 0.58rem; color: #94a3b8; }
+  .bar-track { display: flex; flex-direction: column; gap: 2px; }
+  .bar-fill { height: 8px; border-radius: 2px; transition: width 0.3s ease; }
+
+  /* STACKED BAR CHART */
+  .bmi-row { margin-bottom: 10px; }
+  .bmi-label { font-size: 0.63rem; color: #1e293b; margin-bottom: 3px; display: flex; justify-content: space-between; }
+  .stacked-track { display: flex; height: 16px; border-radius: 3px; overflow: hidden; gap: 1px; }
+  .stacked-seg { transition: flex 0.3s ease; }
+  .bmi-pcts { display: flex; gap: 0.5rem; font-size: 0.58rem; margin-top: 2px; }
+
+  /* LINE CHART */
+  #line-svg { width: 100%; }
+
+  /* PROFILE PANEL */
+  .profile-empty { color: #94a3b8; font-size: 0.72rem; line-height: 1.8; text-align: center; padding-top: 1rem; }
+  .profile-row { display: flex; justify-content: space-between; border-bottom: 1px solid #f1f5f9; padding: 5px 0; font-size: 0.72rem; }
+  .profile-key { color: #64748b; }
+  .profile-clear { color: #ef4444; cursor: pointer; font-size: 0.65rem; }
+  .profile-clear:hover { text-decoration: underline; }
+
+  /* SUMMARY */
+  .stat-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+  .stat-label { font-size: 0.68rem; color: #64748b; }
+  .stat-val { font-size: 1rem; font-weight: 700; }
+
+  /* TOOLTIP */
+  #tooltip { position: fixed; background: #fff; border: 1px solid #e2e8f0; border-radius: 7px; padding: 0.55rem 0.75rem; font-size: 0.7rem; pointer-events: none; z-index: 999; box-shadow: 0 4px 16px #00000018; line-height: 1.7; min-width: 160px; display: none; color: #1e293b; }
+  .tt-disorder { font-weight: 700; margin-bottom: 2px; }
+  .tt-hint { color: #94a3b8; font-size: 0.62rem; margin-top: 2px; }
+
+  .legend { display: flex; gap: 0.8rem; font-size: 0.63rem; margin-top: 4px; }
+  .who-line { border-top: 1px dashed #f97316; padding-top: 3px; font-size: 0.6rem; color: #c2410c; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h1>Sleep Health <span class="accent">&</span> Lifestyle</h1>
+<p class="subtitle" id="subtitle">374 of 374 individuals &middot; hover dots for details &middot; click dots to pin profile</p>
+
+<!-- FILTERS -->
+<div class="filters">
+  <select id="sel-gender"><option>All</option><option>Male</option><option>Female</option></select>
+  <select id="sel-occ"><option value="All">All Occupations</option></select>
+  <select id="sel-bmi"><option value="All">All BMI</option></select>
+  <div style="display:flex;gap:0.4rem">
+    <button class="toggle-btn active-none" data-d="None">None</button>
+    <button class="toggle-btn active-insomnia" data-d="Insomnia">Insomnia</button>
+    <button class="toggle-btn active-apnea" data-d="Sleep Apnea">Sleep Apnea</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:0.4rem">
+    <span class="age-label" id="age-label">Age 27-59</span>
+    <input type="range" id="age-min" min="27" max="59" value="27">
+    <input type="range" id="age-max" min="27" max="59" value="59">
+  </div>
+  <button class="reset-btn" id="btn-reset">Reset</button>
+</div>
+
+<!-- Grid -->
+<div class="grid">
+
+  <!-- TOP LEFT: Scatter -->
+  <div class="card">
+    <div class="card-title">SCATTER PLOT</div>
+    <div class="card-sub">stress level &times; sleep quality &mdash; inverted Y (high = good)</div>
+    <svg id="scatter-svg" viewBox="0 0 340 220"></svg>
+    <div class="legend">
+      <span style="color:#16a34a">&#9679; None</span>
+      <span style="color:#c2410c">&#9679; Insomnia</span>
+      <span style="color:#dc2626">&#9679; Sleep Apnea</span>
+    </div>
+  </div>
+
+  <!-- TOP MIDDLE: Grouped bar -->
+  <div class="card">
+    <div class="card-title">GROUPED BAR</div>
+    <div class="card-sub" style="display:flex;justify-content:space-between">
+      <span>avg sleep duration by occupation</span>
+      <span><span style="color:#6366f1">&#9632; Male</span> &nbsp;<span style="color:#06b6d4">&#9632; Female</span></span>
+    </div>
+    <div id="bar-chart"></div>
+    <div class="who-line">&#8212; &#8212; 7hr WHO guideline</div>
+  </div>
+
+  <!-- TOP RIGHT: Profile -->
+  <div class="card">
+    <div class="card-title">PROFILE</div>
+    <div id="profile-panel">
+      <div class="profile-empty">
+        <div style="font-size:2rem;opacity:0.3;margin-bottom:0.5rem">&#128164;</div>
+        Click any dot on the scatter plot to pin an individual profile here.
+        <div id="summary-stats" style="margin-top:1rem;font-size:0.65rem;border-top:1px solid #2a2d3e;padding-top:0.6rem;text-align:left;line-height:2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM LEFT: Stacked bar -->
+  <div class="card">
+    <div class="card-title">STACKED BAR</div>
+    <div class="card-sub">disorder breakdown by BMI category</div>
+    <div id="stacked-chart"></div>
+    <div class="legend" style="margin-top:8px">
+      <span style="color:#16a34a">&#9632; None</span>
+      <span style="color:#c2410c">&#9632; Insomnia</span>
+      <span style="color:#dc2626">&#9632; Sleep Apnea</span>
+    </div>
+  </div>
+
+  <!-- BOTTOM MIDDLE: Line chart -->
+  <div class="card">
+    <div class="card-title">LINE CHART</div>
+    <div class="card-sub">avg sleep duration vs. age</div>
+    <svg id="line-svg" viewBox="0 0 320 160"></svg>
+    <div class="legend">
+      <span style="color:#dc2626">&#8212; Disorder</span>
+      <span style="color:#3b82f6">&#8212; No Disorder</span>
+    </div>
+  </div>
+
+  <!-- BOTTOM RIGHT: Summary -->
+  <div class="card">
+    <div class="card-title">SUMMARY</div>
+    <div id="summary-panel" style="margin-top:0.5rem"></div>
+  </div>
+
+</div>
+
+<!-- Tooltip -->
+<div id="tooltip">
+  <div class="tt-disorder" id="tt-disorder"></div>
+  <div id="tt-line1"></div>
+  <div id="tt-line2"></div>
+  <div id="tt-line3"></div>
+  <div class="tt-hint">click to pin profile</div>
+</div>
+
+<script>
+// DATA
+let DATA = [];
+fetch('./Sleep_health_and_lifestyle_dataset.csv')
+  .then(r => r.text())
+  .then(text => {
+    DATA = text.trim().split('\n').slice(1).map(line => {
+      const p = line.split(',');
+      return {
+        id: +p[0], gender: p[1], age: +p[2], occupation: p[3],
+        sleepDur: +p[4], sleepQual: +p[5], activity: +p[6], stress: +p[7],
+        bmi: p[8], bp: p[9], hr: +p[10], steps: +p[11], disorder: p[12].trim()
+      };
+    });
+    // populate dropdowns
+    const occs = [...new Set(DATA.map(d=>d.occupation))].sort();
+    const bmis = [...new Set(DATA.map(d=>d.bmi))].sort();
+    occs.forEach(o => { const opt=document.createElement('option'); opt.value=opt.text=o; document.getElementById('sel-occ').appendChild(opt); });
+    bmis.forEach(b => { const opt=document.createElement('option'); opt.value=opt.text=b; document.getElementById('sel-bmi').appendChild(opt); });
+    render();
+  });
+
+// ── STATE ─────────────────────────────────────────────────────────────────
+const state = {
+  gender: 'All', occupation: 'All', bmi: 'All',
+  disorders: new Set(['None','Insomnia','Sleep Apnea']),
+  ageMin: 27, ageMax: 59,
+  pinned: null, hoveredOcc: null
+};
+
+const DCOLOR = { 'None':'#22c55e', 'Insomnia':'#f97316', 'Sleep Apnea':'#ef4444' };
+const avg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+
+// ── POPULATE DROPDOWNS ────────────────────────────────────────────────────
+const occs = [...new Set(DATA.map(d=>d.occupation))].sort();
+const bmis = [...new Set(DATA.map(d=>d.bmi))].sort();
+occs.forEach(o => { const opt=document.createElement('option'); opt.value=opt.text=o; document.getElementById('sel-occ').appendChild(opt); });
+bmis.forEach(b => { const opt=document.createElement('option'); opt.value=opt.text=b; document.getElementById('sel-bmi').appendChild(opt); });
+
+// ── FILTER ────────────────────────────────────────────────────────────────
+function getFiltered() {
+  return DATA.filter(d =>
+    (state.gender==='All' || d.gender===state.gender) &&
+    (state.occupation==='All' || d.occupation===state.occupation) &&
+    (state.bmi==='All' || d.bmi===state.bmi) &&
+    state.disorders.has(d.disorder) &&
+    d.age>=state.ageMin && d.age<=state.ageMax
+  );
+}
+
+// ── SCATTER ───────────────────────────────────────────────────────────────
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const W=340, H=220, PL=36, PR=12, PT=28, PB=28;
+function sx(v){ return PL + ((v-1)/8)*(W-PL-PR); }
+function sy(v){ return PT + (1-(v-1)/9)*(H-PT-PB); } // inverted
+
+function drawScatter(filtered) {
+  const svg = document.getElementById('scatter-svg');
+  svg.innerHTML = '';
+  const mk = (tag,attrs) => { const el=document.createElementNS(SVG_NS,tag); Object.entries(attrs).forEach(([k,v])=>el.setAttribute(k,v)); return el; };
+
+  // Ideal zone
+  const idealW=(W-PL-PR)*0.35, idealH=(H-PT-PB)*0.3;
+  svg.appendChild(mk('rect',{x:PL,y:PT,width:idealW,height:idealH,fill:'#f0fdf410',stroke:'#4ade8035','stroke-width':1,'stroke-dasharray':'4,3',rx:3}));
+  const it=mk('text',{x:PL+5,y:PT+13,fill:'#16a34a88','font-size':8,'font-family':'Georgia'}); it.textContent='ideal zone'; svg.appendChild(it);
+
+  // Axes
+  svg.appendChild(mk('line',{x1:PL,y1:H-PB,x2:W-PR,y2:H-PB,stroke:'#e2e8f0','stroke-width':1}));
+  svg.appendChild(mk('line',{x1:PL,y1:PT,x2:PL,y2:H-PB,stroke:'#e2e8f0','stroke-width':1}));
+
+  // Labels
+  const xl=mk('text',{x:W/2,y:H-2,fill:'#94a3b8','font-size':8,'text-anchor':'middle','font-family':'Georgia'}); xl.textContent='Stress Level'; svg.appendChild(xl);
+  const yt=mk('text',{x:8,y:PT+5,fill:'#16a34a','font-size':7,'font-family':'Georgia'}); yt.textContent='high quality'; svg.appendChild(yt);
+  const yb=mk('text',{x:8,y:H-PB-2,fill:'#dc2626','font-size':7,'font-family':'Georgia'}); yb.textContent='low quality'; svg.appendChild(yb);
+
+  // X ticks
+  [1,3,5,7,8].forEach(v => {
+    const t=mk('text',{x:sx(v),y:H-PB+11,fill:'#94a3b8','font-size':7,'text-anchor':'middle','font-family':'Georgia'}); t.textContent=v; svg.appendChild(t);
+  });
+
+  // Dots
+  filtered.forEach(d => {
+    const x=sx(d.stress), y=sy(d.sleepQual);
+    const isHov = state.hoveredOcc && d.occupation!==state.hoveredOcc;
+    const c=mk('circle',{cx:x,cy:y,r:5,fill:DCOLOR[d.disorder],opacity:isHov?0.06:0.82,'data-id':d.id});
+    c.classList.add('dot');
+    c.addEventListener('mouseenter', e => showTooltip(e, d));
+    c.addEventListener('mouseleave', hideTooltip);
+    c.addEventListener('click', () => pinProfile(d));
+    svg.appendChild(c);
+  });
+}
+
+// ── BAR CHART ─────────────────────────────────────────────────────────────
+function drawBars(filtered) {
+  const container = document.getElementById('bar-chart');
+  container.innerHTML = '';
+  const occMap = {};
+  filtered.forEach(d => {
+    if(!occMap[d.occupation]) occMap[d.occupation]={m:[],f:[]};
+    d.gender==='Male' ? occMap[d.occupation].m.push(d.sleepDur) : occMap[d.occupation].f.push(d.sleepDur);
+  });
+  const sorted = Object.entries(occMap).sort((a,b)=>{
+    const aA=(avg(a[1].m)||0+avg(a[1].f)||0)/((a[1].m.length>0?1:0)+(a[1].f.length>0?1:0)||1);
+    const bA=(avg(b[1].m)||0+avg(b[1].f)||0)/((b[1].m.length>0?1:0)+(b[1].f.length>0?1:0)||1);
+    return bA-aA;
+  });
+  const maxW = 180;
+  sorted.forEach(([occ,{m,f}]) => {
+    const mAvg=avg(m), fAvg=avg(f);
+    const n=m.length+f.length;
+    const row=document.createElement('div');
+    row.className='occ-row';
+    row.style.opacity = (state.hoveredOcc && state.hoveredOcc!==occ) ? '0.2' : '1';
+    row.innerHTML = `<div class="occ-name">${occ} <span class="occ-count">(${n})</span></div><div class="bar-track">${
+      m.length ? `<div style="display:flex;align-items:center;gap:4px"><div class="bar-fill" style="width:${(mAvg/9)*maxW}px;background:#6366f1"></div><span style="font-size:0.58rem;color:#64748b">${mAvg.toFixed(1)}h</span></div>` : ''
+    }${
+      f.length ? `<div style="display:flex;align-items:center;gap:4px"><div class="bar-fill" style="width:${(fAvg/9)*maxW}px;background:#06b6d4"></div><span style="font-size:0.58rem;color:#64748b">${fAvg.toFixed(1)}h</span></div>` : ''
+    }</div>`;
+    row.addEventListener('mouseenter', () => { state.hoveredOcc=occ; render(); });
+    row.addEventListener('mouseleave', () => { state.hoveredOcc=null; render(); });
+    container.appendChild(row);
+  });
+}
+
+// ── STACKED BAR ───────────────────────────────────────────────────────────
+function drawStacked(filtered) {
+  const container = document.getElementById('stacked-chart');
+  container.innerHTML = '';
+  const bmiOrder=['Normal','Normal Weight','Overweight','Obese'];
+  bmiOrder.forEach(b => {
+    const rows=filtered.filter(d=>d.bmi===b);
+    if(!rows.length) return;
+    const none=rows.filter(d=>d.disorder==='None').length;
+    const ins=rows.filter(d=>d.disorder==='Insomnia').length;
+    const apn=rows.filter(d=>d.disorder==='Sleep Apnea').length;
+    const t=rows.length;
+    const div=document.createElement('div'); div.className='bmi-row';
+    div.innerHTML=`
+      <div class="bmi-label"><span>${b}</span><span style="color:#64748b">n=${t}</span></div>
+      <div class="stacked-track">
+        ${none?`<div class="stacked-seg" style="flex:${none};background:#22c55e;opacity:0.85" title="None: ${none}"></div>`:''}
+        ${ins?`<div class="stacked-seg" style="flex:${ins};background:#f97316;opacity:0.85" title="Insomnia: ${ins}"></div>`:''}
+        ${apn?`<div class="stacked-seg" style="flex:${apn};background:#ef4444;opacity:0.85" title="Sleep Apnea: ${apn}"></div>`:''}
+      </div>
+      <div class="bmi-pcts">
+        ${none?`<span style="color:#16a34a">None ${Math.round(none/t*100)}%</span>`:''}
+        ${ins?`<span style="color:#c2410c">Ins ${Math.round(ins/t*100)}%</span>`:''}
+        ${apn?`<span style="color:#dc2626">Apnea ${Math.round(apn/t*100)}%</span>`:''}
+      </div>`;
+    container.appendChild(div);
+  });
+}
+
+// ── LINE CHART ────────────────────────────────────────────────────────────
+const LW=320,LH=160,LP=30,LR=10,LT=10,LB=24;
+const minS=5,maxS=9.5;
+function lx(age){ return LP+((age-27)/32)*(LW-LP-LR); }
+function ly(s){ return LT+(1-(s-minS)/(maxS-minS))*(LH-LT-LB); }
+
+function drawLine(filtered) {
+  const svg=document.getElementById('line-svg');
+  svg.innerHTML='';
+  const mk=(tag,attrs)=>{ const el=document.createElementNS(SVG_NS,tag); Object.entries(attrs).forEach(([k,v])=>el.setAttribute(k,v)); return el; };
+
+  // Axes
+  svg.appendChild(mk('line',{x1:LP,y1:LH-LB,x2:LW-LR,y2:LH-LB,stroke:'#e2e8f0','stroke-width':1}));
+  svg.appendChild(mk('line',{x1:LP,y1:LT,x2:LP,y2:LH-LB,stroke:'#e2e8f0','stroke-width':1}));
+
+  // 7hr ref
+  svg.appendChild(mk('line',{x1:LP,y1:ly(7),x2:LW-LR,y2:ly(7),stroke:'#f97316','stroke-width':1,'stroke-dasharray':'4,3',opacity:0.5}));
+  const rt=mk('text',{x:LW-LR,y:ly(7)-2,fill:'#f97316','font-size':7,'text-anchor':'end',opacity:0.7,'font-family':'Georgia'}); rt.textContent='7hr'; svg.appendChild(rt);
+
+  // Y ticks
+  [5,6,7,8,9].forEach(v=>{ const t=mk('text',{x:LP-3,y:ly(v)+3,fill:'#94a3b8','font-size':7,'text-anchor':'end','font-family':'Georgia'}); t.textContent=v; svg.appendChild(t); });
+
+  // X ticks
+  [27,35,45,55,59].forEach(v=>{ const t=mk('text',{x:lx(v),y:LH-LB+12,fill:'#94a3b8','font-size':7,'text-anchor':'middle','font-family':'Georgia'}); t.textContent=v; svg.appendChild(t); });
+
+  // Build lines
+  const ages=[...new Set(filtered.map(d=>d.age))].sort((a,b)=>a-b);
+  const disP=[], noneP=[];
+  ages.forEach(age=>{
+    const rows=filtered.filter(d=>d.age===age);
+    const dis=rows.filter(d=>d.disorder!=='None');
+    const none=rows.filter(d=>d.disorder==='None');
+    if(dis.length) disP.push(`${lx(age)},${ly(avg(dis.map(d=>d.sleepDur)))}`);
+    if(none.length) noneP.push(`${lx(age)},${ly(avg(none.map(d=>d.sleepDur)))}`);
+  });
+
+  if(noneP.length>1){ const pl=mk('polyline',{points:noneP.join(' '),fill:'none',stroke:'#3b82f6','stroke-width':2.5,'stroke-linejoin':'round'}); svg.appendChild(pl); }
+  if(disP.length>1){ const pl=mk('polyline',{points:disP.join(' '),fill:'none',stroke:'#dc2626','stroke-width':2.5,'stroke-linejoin':'round'}); svg.appendChild(pl); }
+}
+
+// ── SUMMARY ───────────────────────────────────────────────────────────────
+function drawSummary(filtered) {
+  const panel=document.getElementById('summary-panel');
+  const disRate=filtered.length?Math.round(filtered.filter(d=>d.disorder!=='None').length/filtered.length*100):0;
+  const stats=[
+    ['Avg Sleep', avg(filtered.map(d=>d.sleepDur)).toFixed(1)+' hrs','#3b82f6'],
+    ['Avg Stress', avg(filtered.map(d=>d.stress)).toFixed(1)+' / 10','#f97316'],
+    ['Disorder Rate', disRate+'%','#ef4444'],
+    ['Avg Steps', Math.round(avg(filtered.map(d=>d.steps))).toLocaleString(),'#06b6d4'],
+    ['Sample', filtered.length+' people','#64748b'],
+  ];
+  panel.innerHTML = stats.map(([l,v,c])=>`<div class="stat-row"><span class="stat-label">${l}</span><span class="stat-val" style="color:${c}">${v}</span></div>`).join('');
+  document.getElementById('subtitle').textContent=`${filtered.length} of 374 individuals \u00b7 hover dots for details \u00b7 click dots to pin profile`;
+
+  // Also update summary stats inside profile empty state
+  const ss=document.getElementById('summary-stats');
+  if(ss) ss.innerHTML=`<div>n = ${filtered.length} shown</div><div>avg sleep: ${avg(filtered.map(d=>d.sleepDur)).toFixed(1)} hrs</div><div>avg stress: ${avg(filtered.map(d=>d.stress)).toFixed(1)} / 10</div><div>disorder rate: ${disRate}%</div>`;
+}
+
+// ── PROFILE ───────────────────────────────────────────────────────────────
+function pinProfile(d) {
+  state.pinned = d;
+  const panel=document.getElementById('profile-panel');
+  const fields=[
+    ['Occupation',d.occupation],['Age / Gender',`${d.age}, ${d.gender}`],
+    ['Sleep Duration',`${d.sleepDur} hrs`],['Sleep Quality',`${d.sleepQual} / 10`],
+    ['Stress Level',`${d.stress} / 10`],['BMI',d.bmi],
+    ['Disorder',d.disorder],['Daily Steps',d.steps.toLocaleString()],['Heart Rate',`${d.hr} bpm`]
+  ];
+  panel.innerHTML=`<div style="font-size:0.65rem;color:#64748b;margin-bottom:8px">click another dot to update &nbsp;<span class="profile-clear" onclick="clearPin()">x clear</span></div>`
+    +fields.map(([k,v])=>`<div class="profile-row"><span class="profile-key">${k}</span><span style="color:${k==='Disorder'?DCOLOR[v]:'#e2e8f0'};font-weight:${k==='Disorder'?'bold':'normal'}">${v}</span></div>`).join('');
+}
+
+function clearPin() {
+  state.pinned=null;
+  document.getElementById('profile-panel').innerHTML=`<div class="profile-empty"><div style="font-size:2rem;opacity:0.3;margin-bottom:0.5rem">&#128164;</div>Click any dot on the scatter plot to pin an individual profile here.<div id="summary-stats" style="margin-top:1rem;font-size:0.65rem;border-top:1px solid #2a2d3e;padding-top:0.6rem;text-align:left;line-height:2"></div></div>`;
+  render();
+}
+
+// ── TOOLTIP ───────────────────────────────────────────────────────────────
+const tt=document.getElementById('tooltip');
+function showTooltip(e,d) {
+  document.getElementById('tt-disorder').style.color=DCOLOR[d.disorder];
+  document.getElementById('tt-disorder').textContent=d.disorder;
+  document.getElementById('tt-line1').textContent=`${d.occupation} \u00b7 ${d.age}yo ${d.gender}`;
+  document.getElementById('tt-line2').textContent=`Sleep: ${d.sleepDur}h \u00b7 Quality: ${d.sleepQual}/10`;
+  document.getElementById('tt-line3').textContent=`Stress: ${d.stress}/10 \u00b7 BMI: ${d.bmi}`;
+  tt.style.display='block';
+  tt.style.left=(e.clientX+14)+'px';
+  tt.style.top=(e.clientY-10)+'px';
+}
+function hideTooltip(){ tt.style.display='none'; }
+document.addEventListener('mousemove',e=>{ if(tt.style.display==='block'){ tt.style.left=(e.clientX+14)+'px'; tt.style.top=(e.clientY-10)+'px'; }});
+
+// ── RENDER ────────────────────────────────────────────────────────────────
+function render() {
+  const f=getFiltered();
+  drawScatter(f);
+  drawBars(f);
+  drawStacked(f);
+  drawLine(f);
+  drawSummary(f);
+}
+
+// ── EVENT LISTENERS ───────────────────────────────────────────────────────
+document.getElementById('sel-gender').addEventListener('change',e=>{ state.gender=e.target.value; render(); });
+document.getElementById('sel-occ').addEventListener('change',e=>{ state.occupation=e.target.value; render(); });
+document.getElementById('sel-bmi').addEventListener('change',e=>{ state.bmi=e.target.value; render(); });
+
+document.querySelectorAll('.toggle-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const d=btn.dataset.d;
+    if(state.disorders.has(d)) state.disorders.delete(d);
+    else state.disorders.add(d);
+    const cls={'None':'active-none','Insomnia':'active-insomnia','Sleep Apnea':'active-apnea'};
+    btn.classList.toggle(cls[d], state.disorders.has(d));
+    render();
+  });
+});
+
+document.getElementById('age-min').addEventListener('input',e=>{
+  state.ageMin=Math.min(+e.target.value, state.ageMax-1);
+  e.target.value=state.ageMin;
+  document.getElementById('age-label').textContent=`Age ${state.ageMin}-${state.ageMax}`;
+  render();
+});
+document.getElementById('age-max').addEventListener('input',e=>{
+  state.ageMax=Math.max(+e.target.value, state.ageMin+1);
+  e.target.value=state.ageMax;
+  document.getElementById('age-label').textContent=`Age ${state.ageMin}-${state.ageMax}`;
+  render();
+});
+
+document.getElementById('btn-reset').addEventListener('click',()=>{
+  state.gender='All'; state.occupation='All'; state.bmi='All';
+  state.disorders=new Set(['None','Insomnia','Sleep Apnea']);
+  state.ageMin=27; state.ageMax=59;
+  document.getElementById('sel-gender').value='All';
+  document.getElementById('sel-occ').value='All';
+  document.getElementById('sel-bmi').value='All';
+  document.getElementById('age-min').value=27;
+  document.getElementById('age-max').value=59;
+  document.getElementById('age-label').textContent='Age 27-59';
+  document.querySelectorAll('.toggle-btn').forEach(btn=>{
+    const cls={'None':'active-none','Insomnia':'active-insomnia','Sleep Apnea':'active-apnea'};
+    btn.classList.add(cls[btn.dataset.d]);
+  });
+  clearPin();
+});
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>
