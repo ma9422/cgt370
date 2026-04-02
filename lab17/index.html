@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spotify Featured Artists — Circle Packing</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: rgba(255,255,255,0.07);
+    --text: #f0eff5;
+    --muted: rgba(240,239,245,0.45);
+    --hint: rgba(240,239,245,0.22);
+    --accent: #1DB954;
+
+    --c-pop:        #4a9eff;
+    --c-hiphop:     #ff6b35;
+    --c-rock:       #7ec845;
+    --c-kpop:       #f06292;
+    --c-edm:        #b39ddb;
+    --c-rnb:        #26d7a0;
+    --c-country:    #ffb74d;
+    --c-classical:  #90a4ae;
+    --c-folk:       #aed581;
+    --c-latin:      #f48fb1;
+    --c-other:      #78909c;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+
+  /* ── Layout ── */
+  .app { display: flex; flex-direction: column; min-height: 100vh; }
+
+  header {
+    padding: 28px 36px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .header-left h1 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(20px, 3vw, 30px);
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+  .header-left h1 span { color: var(--accent); }
+  .header-left p {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 4px;
+    max-width: 480px;
+  }
+
+  .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+  .depth-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 12px;
+  }
+  .depth-badge .sep { opacity: 0.3; }
+  .depth-badge .crumb {
+    color: var(--text);
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  .depth-badge .crumb:hover { color: var(--accent); }
+  .depth-badge .crumb.active { color: var(--accent); cursor: default; }
+
+  .btn-reset {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 12px;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-reset:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-reset.visible { display: flex; }
+
+  /* ── LEGEND ── */
+  .legend-bar {
+    padding: 14px 36px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 0.15s;
+    padding: 2px 0;
+  }
+  .legend-item:hover { color: var(--text); }
+  .legend-item.active { color: var(--text); }
+  .legend-dot {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: transform 0.15s;
+  }
+  .legend-item:hover .legend-dot { transform: scale(1.4); }
+
+  /* ── CHART ── */
+  .chart-wrap {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 36px;
+    min-height: 500px;
+  }
+
+  #chart-svg {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    cursor: default;
+  }
+
+  .node-group { transition: opacity 0.2s; }
+
+  circle {
+    transition: stroke-width 0.15s, opacity 0.15s;
+  }
+
+  /* ── TOOLTIP ── */
+  #tooltip {
+    position: fixed;
+    pointer-events: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    display: none;
+    z-index: 1000;
+    max-width: 220px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    backdrop-filter: blur(4px);
+  }
+  #tooltip .tip-name {
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text);
+    margin-bottom: 6px;
+    line-height: 1.3;
+  }
+  #tooltip .tip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  #tooltip .tip-row span:last-child {
+    color: var(--text);
+    font-weight: 500;
+  }
+  #tooltip .tip-badge {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--accent);
+    border: 1px solid rgba(29,185,84,0.3);
+    border-radius: 4px;
+    padding: 2px 7px;
+  }
+
+  /* ── STATS BAR ── */
+  .stats-bar {
+    padding: 14px 36px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+  .stat { display: flex; flex-direction: column; }
+  .stat-val {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--text);
+    line-height: 1.2;
+  }
+  .stat-lbl { font-size: 11px; color: var(--hint); margin-top: 1px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+  /* ── ZOOM HINT ── */
+  .zoom-hint {
+    position: absolute;
+    bottom: 36px;
+    right: 36px;
+    font-size: 11px;
+    color: var(--hint);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    pointer-events: none;
+    transition: opacity 0.4s;
+  }
+  .zoom-hint svg { opacity: 0.5; }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+  .anim-in { animation: fadeIn 0.35s cubic-bezier(0.16,1,0.3,1) both; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="header-left">
+      <h1>Spotify <span>Featured Artists</span></h1>
+      <p>Hierarchical view of genre → playlist → artist. Circle size encodes popularity score (0–100). Click any bubble to explore.</p>
+    </div>
+    <div class="header-right">
+      <div class="depth-badge" id="breadcrumb">
+        <span class="crumb active" onclick="resetAll()">All genres</span>
+      </div>
+      <button class="btn-reset" id="btn-reset" onclick="resetAll()">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 6a5 5 0 1 0 1.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M1 2v4h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        All genres
+      </button>
+    </div>
+  </header>
+
+  <div class="legend-bar" id="legend"></div>
+
+  <div class="chart-wrap" id="chart-wrap">
+    <svg id="chart-svg"></svg>
+    <div class="zoom-hint" id="zoom-hint">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/><path d="M10 10l3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M6 3v6M3 6h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      Click genre to zoom in
+    </div>
+  </div>
+
+  <div class="stats-bar" id="stats-bar"></div>
+
+</div>
+
+<div id="tooltip"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script>
+// DATA
+const RAW = {"name":"Spotify Featured Artists","children":[{"name":"Classical / Ambient","children":[{"name":"Classical New Releases","avg_popularity":36.8,"artist_count":74,"children":[{"name":"Johann Sebastian Bach","value":74,"popularity":74.0,"monthly_listeners":8247924,"followers":4281026},{"name":"London Symphony Orchestra","value":73,"popularity":73.0,"monthly_listeners":7334069,"followers":295742},{"name":"Antonio Vivaldi","value":71,"popularity":71.0,"monthly_listeners":6399656,"followers":2432119},{"name":"Wolfgang Amadeus Mozart","value":71,"popularity":71.0,"monthly_listeners":7016286,"followers":5325385},{"name":"Ludwig Van Beethoven","value":68,"popularity":68.0,"monthly_listeners":7493313,"followers":5197393}]},{"name":"Perfect Concentration","avg_popularity":40.1,"artist_count":52,"children":[{"name":"Jacob David","value":52,"popularity":52.0,"monthly_listeners":605847,"followers":9347},{"name":"Anna Landström","value":50,"popularity":50.0,"monthly_listeners":427235,"followers":1364},{"name":"Christian Janssen","value":50,"popularity":50.0,"monthly_listeners":1005877,"followers":582},{"name":"Edvard Kravchuk","value":49,"popularity":49.0,"monthly_listeners":1206282,"followers":6359},{"name":"Ever So Blue","value":49,"popularity":49.0,"monthly_listeners":615940,"followers":11714}]},{"name":"Piano in the Background","avg_popularity":40.8,"artist_count":52,"children":[{"name":"Hideyuki Hashimoto","value":59,"popularity":59.0,"monthly_listeners":898498,"followers":27151},{"name":"Ole-Bjørn Talstad","value":55,"popularity":55.0,"monthly_listeners":671054,"followers":2139},{"name":"Carluccio","value":52,"popularity":52.0,"monthly_listeners":802415,"followers":1427},{"name":"Christian Janssen","value":52,"popularity":52.0,"monthly_listeners":861424,"followers":517},{"name":"Jacob David","value":52,"popularity":52.0,"monthly_listeners":607539,"followers":9343}]},{"name":"Calm Vibes","avg_popularity":40.0,"artist_count":45,"children":[{"name":"Ben Crosland","value":59,"popularity":59.0,"monthly_listeners":1918376,"followers":9471},{"name":"Klaüs","value":56,"popularity":56.0,"monthly_listeners":230820,"followers":6743},{"name":"Hideyuki Hashimoto","value":54,"popularity":54.0,"monthly_listeners":806743,"followers":27524},{"name":"Akira Kosemura","value":51,"popularity":51.0,"monthly_listeners":799968,"followers":81852},{"name":"Samuel Kees","value":51,"popularity":51.0,"monthly_listeners":1044744,"followers":212}]}]},{"name":"Country","children":[{"name":"New Traditions Country Heroes","avg_popularity":46.8,"artist_count":44,"children":[{"name":"Luke Combs","value":81,"popularity":81.0,"monthly_listeners":24079948,"followers":10416774},{"name":"Eric Church","value":70,"popularity":70.0,"monthly_listeners":10214377,"followers":3808659},{"name":"George Strait","value":70,"popularity":70.0,"monthly_listeners":8228063,"followers":4241692},{"name":"Alan Jackson","value":69,"popularity":69.0,"monthly_listeners":8454896,"followers":2655078},{"name":"Brooks & Dunn","value":66,"popularity":66.0,"monthly_listeners":8004443,"followers":2839826}]},{"name":"Bluegrass Covers","avg_popularity":30.8,"artist_count":39,"children":[{"name":"Alison Krauss","value":60,"popularity":60.0,"monthly_listeners":2438966,"followers":361595},{"name":"Trampled by Turtles","value":55,"popularity":55.0,"monthly_listeners":1199935,"followers":387839},{"name":"The Be Good Tanyas","value":48,"popularity":48.0,"monthly_listeners":528351,"followers":98424},{"name":"Tommy Emmanuel","value":46,"popularity":46.0,"monthly_listeners":212831,"followers":183910},{"name":"The Brothers Comatose","value":44,"popularity":44.0,"monthly_listeners":322760,"followers":53636}]},{"name":"Indie Bluegrass","avg_popularity":35.1,"artist_count":36,"children":[{"name":"Zach Bryan","value":88,"popularity":88.0,"monthly_listeners":31080949,"followers":3627184},{"name":"Billy Strings","value":60,"popularity":60.0,"monthly_listeners":1514818,"followers":377848},{"name":"Old Crow Medicine Show","value":51,"popularity":51.0,"monthly_listeners":1322634,"followers":425530},{"name":"Aoife O'Donovan","value":50,"popularity":50.0,"monthly_listeners":632868,"followers":64221},{"name":"Dan Tyminski","value":49,"popularity":49.0,"monthly_listeners":86112,"followers":45732}]},{"name":"Chillin' on a Dirt Road","avg_popularity":65.6,"artist_count":24,"children":[{"name":"Morgan Wallen","value":85,"popularity":85.0,"monthly_listeners":26112446,"followers":9249460},{"name":"Zach Bryan","value":85,"popularity":85.0,"monthly_listeners":29467387,"followers":3816792},{"name":"Luke Combs","value":81,"popularity":81.0,"monthly_listeners":24107787,"followers":10421622},{"name":"Chris Stapleton","value":78,"popularity":78.0,"monthly_listeners":21259920,"followers":6937902},{"name":"Kacey Musgraves","value":76,"popularity":76.0,"monthly_listeners":24966557,"followers":1399805}]}]},{"name":"Electronic / EDM","children":[{"name":"Time Warp Guest List","avg_popularity":38.4,"artist_count":52,"children":[{"name":"Moby","value":68,"popularity":68.0,"monthly_listeners":6672904,"followers":1796461},{"name":"Charlotte De Witte","value":60,"popularity":60.0,"monthly_listeners":2221976,"followers":916784},{"name":"Jamie Jones","value":57,"popularity":57.0,"monthly_listeners":2553612,"followers":250249},{"name":"NTO","value":57,"popularity":57.0,"monthly_listeners":2018466,"followers":267315},{"name":"Mochakk","value":56,"popularity":56.0,"monthly_listeners":1335174,"followers":350646}]},{"name":"Heart Beats","avg_popularity":54.6,"artist_count":51,"children":[{"name":"Fred Again..","value":79,"popularity":79.0,"monthly_listeners":17370797,"followers":1403228},{"name":"ODESZA","value":68,"popularity":68.0,"monthly_listeners":5621700,"followers":1588422},{"name":"VIZE","value":68,"popularity":68.0,"monthly_listeners":8065741,"followers":203265},{"name":"Ceres","value":67,"popularity":67.0,"monthly_listeners":7588147,"followers":6861},{"name":"Lavern","value":67,"popularity":67.0,"monthly_listeners":6400753,"followers":90195}]},{"name":"Dance Party","avg_popularity":62.4,"artist_count":47,"children":[{"name":"Fisher","value":74,"popularity":74.0,"monthly_listeners":13885479,"followers":906632},{"name":"Cassö","value":73,"popularity":73.0,"monthly_listeners":17788886,"followers":52185},{"name":"Gabry Ponte","value":73,"popularity":73.0,"monthly_listeners":15707392,"followers":492056},{"name":"Purple Disco Machine","value":73,"popularity":73.0,"monthly_listeners":11672953,"followers":651759},{"name":"Bennett","value":72,"popularity":72.0,"monthly_listeners":13404719,"followers":136699}]},{"name":"Main Stage","avg_popularity":59.3,"artist_count":43,"children":[{"name":"Alan Walker","value":77,"popularity":77.0,"monthly_listeners":29567416,"followers":38478531},{"name":"Fred Again..","value":76,"popularity":76.0,"monthly_listeners":17479138,"followers":1412838},{"name":"Fisher","value":72,"popularity":72.0,"monthly_listeners":15027060,"followers":920334},{"name":"Like Mike","value":71,"popularity":71.0,"monthly_listeners":13595351,"followers":170339},{"name":"Gabry Ponte","value":70,"popularity":70.0,"monthly_listeners":17564919,"followers":505546}]}]},{"name":"Folk / Indie","children":[{"name":"Relax & Unwind","avg_popularity":53.1,"artist_count":26,"children":[{"name":"Lord Huron","value":76,"popularity":76.0,"monthly_listeners":26453325,"followers":1534471},{"name":"Mt. Joy","value":70,"popularity":70.0,"monthly_listeners":6874205,"followers":485034},{"name":"Caamp","value":69,"popularity":69.0,"monthly_listeners":4587808,"followers":581434},{"name":"The Paper Kites","value":69,"popularity":69.0,"monthly_listeners":8864057,"followers":765176},{"name":"Hollow Coves","value":67,"popularity":67.0,"monthly_listeners":6503651,"followers":662224}]},{"name":"Wild & Free","avg_popularity":40.2,"artist_count":20,"children":[{"name":"Allison Russell","value":58,"popularity":58.0,"monthly_listeners":3608982,"followers":81451},{"name":"Oliver Hazard","value":49,"popularity":49.0,"monthly_listeners":899109,"followers":39419},{"name":"Lola Marsh","value":48,"popularity":48.0,"monthly_listeners":836904,"followers":149024},{"name":"Rayland Baxter","value":48,"popularity":48.0,"monthly_listeners":902592,"followers":165269},{"name":"The Secret Sisters","value":48,"popularity":48.0,"monthly_listeners":818589,"followers":97792}]},{"name":"Indie Bluegrass","avg_popularity":29.9,"artist_count":14,"children":[{"name":"Sierra Ferrell","value":64,"popularity":64.0,"monthly_listeners":2664390,"followers":226665},{"name":"Allison Russell","value":61,"popularity":61.0,"monthly_listeners":3603405,"followers":79879},{"name":"Caitlin Canty","value":36,"popularity":36.0,"monthly_listeners":209071,"followers":17011},{"name":"Shallow Alcove","value":35,"popularity":35.0,"monthly_listeners":88456,"followers":19288},{"name":"Erin Rae","value":34,"popularity":34.0,"monthly_listeners":51328,"followers":21504}]},{"name":"Totally Stress Free","avg_popularity":54.5,"artist_count":11,"children":[{"name":"Lord Huron","value":74,"popularity":74.0,"monthly_listeners":26375866,"followers":1540914},{"name":"Mt. Joy","value":68,"popularity":68.0,"monthly_listeners":6843739,"followers":486872},{"name":"Caamp","value":66,"popularity":66.0,"monthly_listeners":4502900,"followers":583378},{"name":"Sierra Ferrell","value":61,"popularity":61.0,"monthly_listeners":2702148,"followers":234365},{"name":"Shakey Graves","value":57,"popularity":57.0,"monthly_listeners":2130929,"followers":536459}]}]},{"name":"Hip-Hop / Rap","children":[{"name":"Get Turnt","avg_popularity":71.5,"artist_count":86,"children":[{"name":"Drake","value":96,"popularity":96.0,"monthly_listeners":82208444,"followers":86195564},{"name":"Kanye West","value":94,"popularity":94.0,"monthly_listeners":77072243,"followers":24720990},{"name":"Future","value":90,"popularity":90.0,"monthly_listeners":64169264,"followers":16834102},{"name":"Metro Boomin","value":90,"popularity":90.0,"monthly_listeners":62311853,"followers":7912622},{"name":"Travis Scott","value":90,"popularity":90.0,"monthly_listeners":69217986,"followers":29026231}]},{"name":"Throwback Thursday","avg_popularity":57.7,"artist_count":77,"children":[{"name":"Pitbull","value":81,"popularity":81.0,"monthly_listeners":48436853,"followers":10255665},{"name":"Jay-Z","value":80,"popularity":80.0,"monthly_listeners":36238619,"followers":8995221},{"name":"The Notorious B.I.G.","value":77,"popularity":77.0,"monthly_listeners":22518855,"followers":10009004},{"name":"Black Eyed Peas","value":76,"popularity":76.0,"monthly_listeners":40835617,"followers":8039365},{"name":"Flo Rida","value":76,"popularity":76.0,"monthly_listeners":34618543,"followers":8438455}]},{"name":"Westside Story","avg_popularity":54.7,"artist_count":70,"children":[{"name":"Drake","value":92,"popularity":92.0,"monthly_listeners":81046858,"followers":87114506},{"name":"Kanye West","value":89,"popularity":89.0,"monthly_listeners":71808651,"followers":25131817},{"name":"Kendrick Lamar","value":87,"popularity":87.0,"monthly_listeners":61290413,"followers":28117229},{"name":"Lil Wayne","value":82,"popularity":82.0,"monthly_listeners":36724659,"followers":14432837},{"name":"Ty Dolla $ign","value":82,"popularity":82.0,"monthly_listeners":45006465,"followers":5211740}]},{"name":"RapCaviar","avg_popularity":39.4,"artist_count":69,"children":[{"name":"Lil Yachty","value":77,"popularity":77.0,"monthly_listeners":18846663,"followers":9822351},{"name":"Ice Spice","value":71,"popularity":71.0,"monthly_listeners":18882509,"followers":3443998},{"name":"Young Nudy","value":67,"popularity":67.0,"monthly_listeners":8004768,"followers":1454153},{"name":"Aminé","value":63,"popularity":63.0,"monthly_listeners":7389232,"followers":1937812},{"name":"Boldy James","value":62,"popularity":62.0,"monthly_listeners":1997953,"followers":198966}]}]},{"name":"K-Pop","children":[{"name":"KrOWN","avg_popularity":43.0,"artist_count":94,"children":[{"name":"Jung Kook","value":83,"popularity":83.0,"monthly_listeners":24986460,"followers":14181748},{"name":"BLACKPINK","value":78,"popularity":78.0,"monthly_listeners":17691036,"followers":48724713},{"name":"Jennie","value":77,"popularity":77.0,"monthly_listeners":35295983,"followers":6237054},{"name":"LE SSERAFIM","value":77,"popularity":77.0,"monthly_listeners":15613885,"followers":5078818},{"name":"J-Hope","value":73,"popularity":73.0,"monthly_listeners":5449052,"followers":17404108}]},{"name":"v o K a l","avg_popularity":46.6,"artist_count":68,"children":[{"name":"Jimin","value":78,"popularity":78.0,"monthly_listeners":6319372,"followers":8070506},{"name":"IU","value":70,"popularity":70.0,"monthly_listeners":7079420,"followers":8489620},{"name":"Taeyeon","value":64,"popularity":64.0,"monthly_listeners":3993002,"followers":2841408},{"name":"Crush","value":63,"popularity":63.0,"monthly_listeners":3189628,"followers":1176659},{"name":"Leehi","value":62,"popularity":62.0,"monthly_listeners":4085265,"followers":1724352}]},{"name":"Singing Room K-Pop","avg_popularity":42.5,"artist_count":57,"children":[{"name":"NewJeans","value":80,"popularity":80.0,"monthly_listeners":16877482,"followers":7616297},{"name":"(G)I-DLE","value":77,"popularity":77.0,"monthly_listeners":12938010,"followers":8791578},{"name":"NCT Dream","value":75,"popularity":75.0,"monthly_listeners":4704254,"followers":7611557},{"name":"aespa","value":74,"popularity":74.0,"monthly_listeners":8141091,"followers":4970067},{"name":"IU","value":73,"popularity":73.0,"monthly_listeners":7614683,"followers":8462265}]},{"name":"K-Pop ON!","avg_popularity":64.1,"artist_count":40,"children":[{"name":"Jung Kook","value":84,"popularity":84.0,"monthly_listeners":26575243,"followers":13950112},{"name":"Stray Kids","value":82,"popularity":82.0,"monthly_listeners":8222204,"followers":14957591},{"name":"LE SSERAFIM","value":78,"popularity":78.0,"monthly_listeners":15861147,"followers":5018235},{"name":"TWICE","value":77,"popularity":77.0,"monthly_listeners":11449753,"followers":19985646},{"name":"ENHYPEN","value":76,"popularity":76.0,"monthly_listeners":9395602,"followers":8446739}]}]},{"name":"Latin","children":[{"name":"Latin Gaming","avg_popularity":65.5,"artist_count":6,"children":[{"name":"Zion & Lennox","value":75,"popularity":75.0,"monthly_listeners":18213834,"followers":7519275},{"name":"Zion","value":74,"popularity":74.0,"monthly_listeners":10629662,"followers":4021587},{"name":"Yng Lvcas","value":67,"popularity":67.0,"monthly_listeners":15736276,"followers":343417},{"name":"Rafa Pabön","value":62,"popularity":62.0,"monthly_listeners":2543792,"followers":335118},{"name":"Punto40","value":47,"popularity":47.0,"monthly_listeners":1215159,"followers":28572}]},{"name":"Viva Latino","avg_popularity":77.7,"artist_count":3,"children":[{"name":"Cris MJ","value":82,"popularity":82.0,"monthly_listeners":39665384,"followers":2286978},{"name":"Floyymenor","value":80,"popularity":80.0,"monthly_listeners":28165456,"followers":250123},{"name":"El Bogueto","value":71,"popularity":71.0,"monthly_listeners":6941503,"followers":410781}]},{"name":"RADAR US","avg_popularity":50.0,"artist_count":2,"children":[{"name":"Gonzy","value":67,"popularity":67.0,"monthly_listeners":5186013,"followers":54209},{"name":"Danny Schiller","value":33,"popularity":33.0,"monthly_listeners":81765,"followers":4813}]}]},{"name":"Other","children":[{"name":"Jazz Vibes","avg_popularity":40.9,"artist_count":65,"children":[{"name":"Xander.","value":58,"popularity":58.0,"monthly_listeners":1609391,"followers":16690},{"name":"Kanisan","value":54,"popularity":54.0,"monthly_listeners":914663,"followers":8232},{"name":"Screen Jazzmaster","value":53,"popularity":53.0,"monthly_listeners":858169,"followers":4135},{"name":"L.dre","value":52,"popularity":52.0,"monthly_listeners":763900,"followers":222811},{"name":"C4c","value":51,"popularity":51.0,"monthly_listeners":1040090,"followers":11753}]},{"name":"One Love","avg_popularity":47.1,"artist_count":52,"children":[{"name":"Bob Marley & The Wailers","value":79,"popularity":79.0,"monthly_listeners":26082377,"followers":12146593},{"name":"Jack Johnson","value":73,"popularity":73.0,"monthly_listeners":13655225,"followers":3747168},{"name":"UB40","value":66,"popularity":66.0,"monthly_listeners":9115713,"followers":2291962},{"name":"Damian Marley","value":64,"popularity":64.0,"monthly_listeners":6558651,"followers":1577651},{"name":"Collie Buddz","value":60,"popularity":60.0,"monthly_listeners":3497242,"followers":390551}]},{"name":"Hardstyle Bangers","avg_popularity":52.2,"artist_count":55,"children":[{"name":"Timmy Trumpet","value":71,"popularity":71.0,"monthly_listeners":10236023,"followers":1114949},{"name":"Brennan Heart","value":62,"popularity":62.0,"monthly_listeners":2613048,"followers":302394},{"name":"Haley Reinhart","value":62,"popularity":62.0,"monthly_listeners":5173297,"followers":329088},{"name":"Da Tweekaz","value":61,"popularity":61.0,"monthly_listeners":2153888,"followers":293254},{"name":"Italobrothers","value":61,"popularity":61.0,"monthly_listeners":3475727,"followers":383872}]},{"name":"Haitian Heat","avg_popularity":31.4,"artist_count":49,"children":[{"name":"Charly Black","value":60,"popularity":60.0,"monthly_listeners":3323699,"followers":337109},{"name":"Traditional","value":60,"popularity":60.0,"monthly_listeners":3551536,"followers":72359},{"name":"Busy Signal","value":59,"popularity":59.0,"monthly_listeners":1606018,"followers":595359},{"name":"Buju Banton","value":58,"popularity":58.0,"monthly_listeners":1547414,"followers":593019},{"name":"Kes","value":55,"popularity":55.0,"monthly_listeners":580392,"followers":116155}]}]},{"name":"Pop","children":[{"name":"Throwback Thursday","avg_popularity":52.7,"artist_count":116,"children":[{"name":"Taylor Swift","value":100,"popularity":100.0,"monthly_listeners":112102696,"followers":109004119},{"name":"Rihanna","value":87,"popularity":87.0,"monthly_listeners":84491252,"followers":59593978},{"name":"Bruno Mars","value":85,"popularity":85.0,"monthly_listeners":68636244,"followers":54880081},{"name":"Justin Bieber","value":85,"popularity":85.0,"monthly_listeners":75399327,"followers":74663775},{"name":"Shakira","value":83,"popularity":83.0,"monthly_listeners":66488350,"followers":32716981}]},{"name":"Heart Beats","avg_popularity":63.5,"artist_count":74,"children":[{"name":"Calvin Harris","value":86,"popularity":86.0,"monthly_listeners":68580165,"followers":22512855},{"name":"Tiësto","value":85,"popularity":85.0,"monthly_listeners":51465541,"followers":7196623},{"name":"Marshmello","value":84,"popularity":84.0,"monthly_listeners":66153173,"followers":33606888},{"name":"Alok","value":81,"popularity":81.0,"monthly_listeners":31818773,"followers":11339272},{"name":"The Chainsmokers","value":81,"popularity":81.0,"monthly_listeners":45313617,"followers":20008339}]},{"name":"Singled Out","avg_popularity":65.1,"artist_count":73,"children":[{"name":"Imagine Dragons","value":87,"popularity":87.0,"monthly_listeners":60839057,"followers":51895549},{"name":"Benson Boone","value":86,"popularity":86.0,"monthly_listeners":59793487,"followers":2069156},{"name":"Khalid","value":84,"popularity":84.0,"monthly_listeners":52317647,"followers":16061549},{"name":"Sia","value":82,"popularity":82.0,"monthly_listeners":59548005,"followers":27655407},{"name":"Camila Cabello","value":80,"popularity":80.0,"monthly_listeners":41399968,"followers":32538213}]},{"name":"Chill Pop","avg_popularity":64.8,"artist_count":72,"children":[{"name":"Taylor Swift","value":100,"popularity":100.0,"monthly_listeners":105879569,"followers":108197057},{"name":"Beyoncé","value":89,"popularity":89.0,"monthly_listeners":77660275,"followers":37130628},{"name":"Billie Eilish","value":88,"popularity":88.0,"monthly_listeners":65916845,"followers":92936466},{"name":"Lana Del Rey","value":88,"popularity":88.0,"monthly_listeners":56330488,"followers":34277379},{"name":"Olivia Rodrigo","value":87,"popularity":87.0,"monthly_listeners":59421653,"followers":35175845}]}]},{"name":"R&B / Soul","children":[{"name":"Next Wave Soul","avg_popularity":41.4,"artist_count":53,"children":[{"name":"Masego","value":70,"popularity":70.0,"monthly_listeners":11796409,"followers":1352684},{"name":"Ari Lennox","value":63,"popularity":63.0,"monthly_listeners":6778499,"followers":770440},{"name":"Cleo Sol","value":62,"popularity":62.0,"monthly_listeners":3144313,"followers":654267},{"name":"Badbadnotgood","value":61,"popularity":61.0,"monthly_listeners":3848942,"followers":754086},{"name":"Free Nationals","value":61,"popularity":61.0,"monthly_listeners":4910547,"followers":298567}]},{"name":"Morning Rhythm","avg_popularity":42.9,"artist_count":35,"children":[{"name":"Amy Winehouse","value":76,"popularity":76.0,"monthly_listeners":17573298,"followers":8551534},{"name":"Masego","value":73,"popularity":73.0,"monthly_listeners":11780170,"followers":1341821},{"name":"Cleo Sol","value":65,"popularity":65.0,"monthly_listeners":3034836,"followers":642430},{"name":"Free Nationals","value":64,"popularity":64.0,"monthly_listeners":5104236,"followers":296406},{"name":"Black Pumas","value":63,"popularity":63.0,"monthly_listeners":4037931,"followers":970894}]},{"name":"Late Night Vibes","avg_popularity":47.0,"artist_count":30,"children":[{"name":"Jungle","value":73,"popularity":73.0,"monthly_listeners":14516345,"followers":1328266},{"name":"Khruangbin","value":71,"popularity":71.0,"monthly_listeners":8047527,"followers":1768549},{"name":"Sonder","value":68,"popularity":68.0,"monthly_listeners":6623981,"followers":1116287},{"name":"Neil Frances","value":63,"popularity":63.0,"monthly_listeners":4609404,"followers":201957},{"name":"Leisure","value":59,"popularity":59.0,"monthly_listeners":2925752,"followers":223938}]},{"name":"All The Feels","avg_popularity":63.6,"artist_count":27,"children":[{"name":"Daniel Caesar","value":81,"popularity":81.0,"monthly_listeners":27786567,"followers":5587615},{"name":"Miguel","value":79,"popularity":79.0,"monthly_listeners":28458303,"followers":4981249},{"name":"Jhené Aiko","value":78,"popularity":78.0,"monthly_listeners":12721387,"followers":7512619},{"name":"Giveon","value":73,"popularity":73.0,"monthly_listeners":23085646,"followers":3736077},{"name":"Masego","value":73,"popularity":73.0,"monthly_listeners":11754851,"followers":1340912}]}]},{"name":"Rock","children":[{"name":"Heavy Metal","avg_popularity":59.3,"artist_count":64,"children":[{"name":"Metallica","value":81,"popularity":81.0,"monthly_listeners":25565985,"followers":26735928},{"name":"Bring Me The Horizon","value":78,"popularity":78.0,"monthly_listeners":13168812,"followers":5408476},{"name":"Avenged Sevenfold","value":76,"popularity":76.0,"monthly_listeners":10081109,"followers":6946522},{"name":"Rammstein","value":75,"popularity":75.0,"monthly_listeners":11870161,"followers":9541526},{"name":"Black Sabbath","value":73,"popularity":73.0,"monthly_listeners":14827413,"followers":7660185}]},{"name":"Rock Classics","avg_popularity":71.8,"artist_count":64,"children":[{"name":"Elton John","value":83,"popularity":83.0,"monthly_listeners":51667195,"followers":13011044},{"name":"AC/DC","value":82,"popularity":82.0,"monthly_listeners":35895202,"followers":27971843},{"name":"Red Hot Chili Peppers","value":82,"popularity":82.0,"monthly_listeners":32855479,"followers":20451670},{"name":"Creedence Clearwater Revival","value":81,"popularity":81.0,"monthly_listeners":35124138,"followers":6420823},{"name":"Fleetwood Mac","value":81,"popularity":81.0,"monthly_listeners":33618675,"followers":11195242}]},{"name":"Hard Rock","avg_popularity":50.7,"artist_count":56,"children":[{"name":"Bon Jovi","value":75,"popularity":75.0,"monthly_listeners":28851732,"followers":13140320},{"name":"Five Finger Death Punch","value":71,"popularity":71.0,"monthly_listeners":7316324,"followers":6300636},{"name":"Sleep Token","value":71,"popularity":71.0,"monthly_listeners":3342818,"followers":1179930},{"name":"Bad Omens","value":70,"popularity":70.0,"monthly_listeners":5654079,"followers":1240399},{"name":"Mötley Crüe","value":68,"popularity":68.0,"monthly_listeners":9007539,"followers":5089191}]},{"name":"Rock Solid","avg_popularity":70.9,"artist_count":51,"children":[{"name":"Arctic Monkeys","value":86,"popularity":86.0,"monthly_listeners":50249683,"followers":24162317},{"name":"AC/DC","value":82,"popularity":82.0,"monthly_listeners":36059050,"followers":28064516},{"name":"Metallica","value":82,"popularity":82.0,"monthly_listeners":25442679,"followers":26800918},{"name":"Nirvana","value":82,"popularity":82.0,"monthly_listeners":31588835,"followers":19084280},{"name":"Red Hot Chili Peppers","value":82,"popularity":82.0,"monthly_listeners":33237389,"followers":20505738}]}]}]};
+
+// ── Color map ──────────────────────────────────────────────────────────
+const COLOR = {
+  'Pop':               '#4a9eff',
+  'Hip-Hop / Rap':     '#ff6b35',
+  'Rock':              '#7ec845',
+  'K-Pop':             '#f06292',
+  'Electronic / EDM':  '#b39ddb',
+  'R&B / Soul':        '#26d7a0',
+  'Country':           '#ffb74d',
+  'Classical / Ambient':'#90a4ae',
+  'Folk / Indie':      '#aed581',
+  'Latin':             '#f48fb1',
+  'Other':             '#78909c',
+};
+const RING_ALPHA = '18'; // hex opacity for genre ring fill
+
+// ── Helpers ────────────────────────────────────────────────────────────
+const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? Math.round(n/1e3)+'K' : String(n);
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const hex2rgba = (hex, a) => {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+};
+
+// ── State ──────────────────────────────────────────────────────────────
+let currentGenre = null;
+
+// ── Build layout ───────────────────────────────────────────────────────
+function buildRoot(data) {
+  return d3.hierarchy(data)
+    .sum(d => d.value ? Math.pow(d.value, 1.4) : (d.children ? 0 : 10))
+    .sort((a,b) => b.value - a.value);
+}
+
+function pack(root, W, H) {
+  return d3.pack().size([W, H]).padding(d => d.depth === 0 ? 12 : d.depth === 1 ? 6 : 3)(root);
+}
+
+// ── Render: overview (all genres) ─────────────────────────────────────
+function renderOverview() {
+  currentGenre = null;
+  const wrap = document.getElementById('chart-wrap');
+  const W = wrap.clientWidth - 72;
+  const H = Math.max(480, Math.round(W * 0.62));
+
+  const root = pack(buildRoot(RAW), W, H);
+  const svg = d3.select('#chart-svg').attr('viewBox', `0 0 ${W} ${H}`);
+  svg.selectAll('*').remove();
+
+  const defs = svg.append('defs');
+
+  // radial gradient per genre
+  RAW.children.forEach(g => {
+    const col = COLOR[g.name] || '#888';
+    const grad = defs.append('radialGradient').attr('id', `gr-${g.name.replace(/\W/g,'_')}`)
+      .attr('cx','40%').attr('cy','35%').attr('r','65%');
+    grad.append('stop').attr('offset','0%').attr('stop-color', col).attr('stop-opacity', 0.22);
+    grad.append('stop').attr('offset','100%').attr('stop-color', col).attr('stop-opacity', 0.06);
+  });
+
+  const nodes = root.descendants().filter(d => d.depth >= 1 && d.depth <= 2);
+  const g = svg.append('g');
+
+  // depth-2 (playlist) circles – background fill
+  g.selectAll('circle.pl')
+    .data(nodes.filter(d => d.depth === 2))
+    .join('circle').attr('class','pl')
+    .attr('cx', d => d.x).attr('cy', d => d.y).attr('r', d => d.r)
+    .attr('fill', d => {
+      const genre = d.parent.data.name;
+      const col = COLOR[genre] || '#888';
+      return hex2rgba(col, 0.08);
+    })
+    .attr('stroke', 'none');
+
+  // depth-1 (genre) ring circles
+  const genreNodes = g.selectAll('g.genre')
+    .data(nodes.filter(d => d.depth === 1))
+    .join('g').attr('class','genre')
+    .attr('transform', d => `translate(${d.x},${d.y})`)
+    .style('cursor','pointer')
+    .on('click', (e, d) => drillToGenre(d.data.name))
+    .on('mousemove', (e, d) => showTip(e, d, 'genre'))
+    .on('mouseleave', hideTip);
+
+  genreNodes.append('circle')
+    .attr('r', d => d.r)
+    .attr('fill', d => `url(#gr-${d.data.name.replace(/\W/g,'_')})`)
+    .attr('stroke', d => COLOR[d.data.name] || '#888')
+    .attr('stroke-width', 1.5)
+    .attr('stroke-opacity', 0.5);
+
+  // genre label
+  genreNodes.filter(d => d.r > 28)
+    .append('text')
+    .attr('text-anchor','middle')
+    .attr('dominant-baseline','middle')
+    .attr('dy', d => d.r > 55 ? '-0.7em' : '0')
+    .attr('font-family',"'Syne', sans-serif")
+    .attr('font-weight','700')
+    .attr('font-size', d => clamp(d.r * 0.2, 10, 15) + 'px')
+    .attr('fill', d => COLOR[d.data.name] || '#aaa')
+    .attr('pointer-events','none')
+    .text(d => d.data.name);
+
+  genreNodes.filter(d => d.r > 55)
+    .append('text')
+    .attr('text-anchor','middle')
+    .attr('dominant-baseline','middle')
+    .attr('dy','0.9em')
+    .attr('font-family',"'DM Sans', sans-serif")
+    .attr('font-size', d => clamp(d.r * 0.14, 9, 11) + 'px')
+    .attr('fill', d => COLOR[d.data.name] || '#aaa')
+    .attr('opacity', 0.55)
+    .attr('pointer-events','none')
+    .text(d => {
+      const total = d.children ? d.children.reduce((s,c) => s + (c.data.artist_count || 0), 0) : 0;
+      return total ? `${total} artists` : '';
+    });
+
+  // hover glow ring
+  genreNodes.append('circle')
+    .attr('r', d => d.r)
+    .attr('fill','none')
+    .attr('stroke', d => COLOR[d.data.name] || '#888')
+    .attr('stroke-width', 2.5)
+    .attr('stroke-opacity', 0)
+    .attr('pointer-events','none')
+    .attr('class','hover-ring');
+
+  genreNodes
+    .on('mouseenter', function(e, d) {
+      d3.select(this).select('.hover-ring').attr('stroke-opacity', 0.6);
+    })
+    .on('mouseleave', function(e, d) {
+      d3.select(this).select('.hover-ring').attr('stroke-opacity', 0);
+      hideTip();
+    });
+
+  // legend
+  buildLegend(RAW.children.map(c => c.name));
+  // breadcrumb
+  setBreadcrumb([]);
+  // stats
+  buildStats(RAW);
+
+  document.getElementById('btn-reset').classList.remove('visible');
+  document.getElementById('zoom-hint').style.opacity = '1';
+}
+
+// ── Render: drilled genre ──────────────────────────────────────────────
+function drillToGenre(genreName) {
+  currentGenre = genreName;
+  const genreData = RAW.children.find(c => c.name === genreName);
+  if (!genreData) return;
+
+  const wrap = document.getElementById('chart-wrap');
+  const W = wrap.clientWidth - 72;
+  const H = Math.max(520, Math.round(W * 0.7));
+  const color = COLOR[genreName] || '#888';
+
+  const subtree = { name: genreName, children: genreData.children };
+  const root = pack(buildRoot(subtree), W, H);
+  const nodes = root.descendants().filter(d => d.depth >= 1);
+
+  const svg = d3.select('#chart-svg').attr('viewBox', `0 0 ${W} ${H}`);
+  svg.selectAll('*').remove();
+
+  const defs = svg.append('defs');
+  const grad = defs.append('radialGradient').attr('id','drill-grad').attr('cx','40%').attr('cy','35%').attr('r','65%');
+  grad.append('stop').attr('offset','0%').attr('stop-color', color).attr('stop-opacity', 0.25);
+  grad.append('stop').attr('offset','100%').attr('stop-color', color).attr('stop-opacity', 0.04);
+
+  const g = svg.append('g');
+
+  // playlist rings (depth 1)
+  const plGroups = g.selectAll('g.pl')
+    .data(nodes.filter(d => d.depth === 1))
+    .join('g').attr('class','pl')
+    .attr('transform', d => `translate(${d.x},${d.y})`);
+
+  plGroups.append('circle')
+    .attr('r', d => d.r)
+    .attr('fill', `url(#drill-grad)`)
+    .attr('stroke', color)
+    .attr('stroke-width', 1.2)
+    .attr('stroke-opacity', 0.4);
+
+  // playlist label
+  plGroups.filter(d => d.r > 22)
+    .append('text')
+    .attr('text-anchor','middle')
+    .attr('dy', d => d.children ? `-${d.r * 0.55}px` : '0.35em')
+    .attr('font-family',"'Syne', sans-serif")
+    .attr('font-weight','600')
+    .attr('font-size', d => clamp(d.r * 0.18, 9, 13) + 'px')
+    .attr('fill', color)
+    .attr('pointer-events','none')
+    .text(d => d.data.name.length > 20 ? d.data.name.slice(0,18)+'…' : d.data.name);
+
+  plGroups.filter(d => d.r > 50 && d.data.artist_count)
+    .append('text')
+    .attr('text-anchor','middle')
+    .attr('dy', d => `-${d.r * 0.35}px`)
+    .attr('font-size', d => clamp(d.r * 0.12, 8, 10) + 'px')
+    .attr('fill', color)
+    .attr('opacity', 0.5)
+    .attr('pointer-events','none')
+    .text(d => `${d.data.artist_count} artists · avg pop ${d.data.avg_popularity}`);
+
+  // artist circles (depth 2)
+  const artistNodes = nodes.filter(d => d.depth === 2);
+
+  const popularityScale = d3.scaleLinear()
+    .domain([d3.min(artistNodes, d => d.data.popularity), 100])
+    .range([0.35, 1]);
+
+  g.selectAll('circle.artist')
+    .data(artistNodes)
+    .join('circle').attr('class','artist')
+    .attr('cx', d => d.x).attr('cy', d => d.y).attr('r', d => d.r)
+    .attr('fill', d => {
+      const alpha = popularityScale(d.data.popularity || 50);
+      return hex2rgba(color, alpha);
+    })
+    .attr('stroke', color)
+    .attr('stroke-width', 0.5)
+    .attr('stroke-opacity', 0.3)
+    .style('cursor','default')
+    .on('mousemove', (e, d) => showTip(e, d, 'artist'))
+    .on('mouseleave', hideTip);
+
+  // artist labels
+  g.selectAll('text.artist-name')
+    .data(artistNodes.filter(d => d.r > 16))
+    .join('text').attr('class','artist-name')
+    .attr('x', d => d.x).attr('y', d => d.y)
+    .attr('text-anchor','middle')
+    .attr('dominant-baseline','middle')
+    .attr('dy', d => d.r > 28 ? '-0.25em' : '0')
+    .attr('font-family',"'DM Sans', sans-serif")
+    .attr('font-weight','500')
+    .attr('font-size', d => clamp(d.r * 0.3, 8, 12) + 'px')
+    .attr('fill','#ffffff')
+    .attr('opacity', d => popularityScale(d.data.popularity) * 0.9 + 0.1)
+    .attr('pointer-events','none')
+    .text(d => {
+      const nm = d.data.name;
+      if (d.r > 35) return nm;
+      const words = nm.split(' ');
+      return words[0].length <= 10 ? words[0] : words[0].slice(0,8)+'…';
+    });
+
+  g.selectAll('text.artist-pop')
+    .data(artistNodes.filter(d => d.r > 28))
+    .join('text').attr('class','artist-pop')
+    .attr('x', d => d.x).attr('y', d => d.y)
+    .attr('text-anchor','middle')
+    .attr('dominant-baseline','middle')
+    .attr('dy','0.85em')
+    .attr('font-size', d => clamp(d.r * 0.22, 7, 10) + 'px')
+    .attr('fill','rgba(255,255,255,0.55)')
+    .attr('pointer-events','none')
+    .text(d => `${d.data.popularity}`);
+
+  buildLegend([genreName]);
+  setBreadcrumb([genreName]);
+  buildStats(genreData);
+
+  document.getElementById('btn-reset').classList.add('visible');
+  document.getElementById('zoom-hint').style.opacity = '0';
+}
+
+function resetAll() {
+  currentGenre = null;
+  renderOverview();
+}
+
+// ── Tooltip ────────────────────────────────────────────────────────────
+function showTip(e, d, kind) {
+  const tip = document.getElementById('tooltip');
+  let html = '';
+  if (kind === 'genre') {
+    const totalArtists = d.children ? d.children.reduce((s,c) => s + (c.data.artist_count||0),0) : 0;
+    const avgPop = d.children
+      ? (d.children.reduce((s,c) => s + (c.data.avg_popularity||0), 0) / d.children.length).toFixed(1)
+      : '—';
+    html = `<div class="tip-name">${d.data.name}</div>
+      <div class="tip-row"><span>Playlists</span><span>${d.children ? d.children.length : 0}</span></div>
+      <div class="tip-row"><span>Artists featured</span><span>${totalArtists}</span></div>
+      <div class="tip-row"><span>Avg popularity</span><span>${avgPop}</span></div>
+      <div class="tip-badge">click to explore →</div>`;
+  } else if (kind === 'artist') {
+    html = `<div class="tip-name">${d.data.name}</div>
+      <div class="tip-row"><span>Popularity</span><span>${d.data.popularity}</span></div>
+      <div class="tip-row"><span>Monthly listeners</span><span>${fmt(d.data.monthly_listeners)}</span></div>
+      <div class="tip-row"><span>Followers</span><span>${fmt(d.data.followers)}</span></div>`;
+  }
+  tip.innerHTML = html;
+  tip.style.display = 'block';
+  moveTip(e);
+}
+
+function moveTip(e) {
+  const tip = document.getElementById('tooltip');
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let x = e.clientX + 14, y = e.clientY - 10;
+  if (x + 240 > vw) x = e.clientX - 240;
+  if (y + 150 > vh) y = e.clientY - 150;
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
+}
+
+function hideTip() { document.getElementById('tooltip').style.display = 'none'; }
+
+document.addEventListener('mousemove', e => {
+  if (document.getElementById('tooltip').style.display !== 'none') moveTip(e);
+});
+
+// ── Legend ─────────────────────────────────────────────────────────────
+function buildLegend(genres) {
+  const el = document.getElementById('legend');
+  el.innerHTML = '';
+  genres.forEach(g => {
+    const col = COLOR[g] || '#888';
+    const item = document.createElement('div');
+    item.className = 'legend-item' + (g === currentGenre ? ' active' : '');
+    item.innerHTML = `<span class="legend-dot" style="background:${col}"></span>${g}`;
+    item.onclick = () => g === currentGenre ? resetAll() : drillToGenre(g);
+    el.appendChild(item);
+  });
+}
+
+// ── Breadcrumb ─────────────────────────────────────────────────────────
+function setBreadcrumb(path) {
+  const el = document.getElementById('breadcrumb');
+  let html = `<span class="crumb${!path.length?' active':''}" onclick="resetAll()">All genres</span>`;
+  path.forEach((p, i) => {
+    html += `<span class="sep">›</span><span class="crumb active">${p}</span>`;
+  });
+  el.innerHTML = html;
+}
+
+// ── Stats bar ──────────────────────────────────────────────────────────
+function buildStats(data) {
+  const bar = document.getElementById('stats-bar');
+  let stats = [];
+  if (!currentGenre) {
+    const totalArtists = data.children.reduce((s, g) =>
+      s + g.children.reduce((s2, p) => s2 + (p.artist_count || 0), 0), 0);
+    const totalPlaylists = data.children.reduce((s, g) => s + g.children.length, 0);
+    const allPops = [];
+    data.children.forEach(g => g.children.forEach(p => p.children && p.children.forEach(a => allPops.push(a.popularity))));
+    const avgPop = allPops.length ? (allPops.reduce((a,b)=>a+b,0)/allPops.length).toFixed(1) : '—';
+    const maxPop = allPops.length ? Math.max(...allPops) : '—';
+    stats = [
+      { val: data.children.length, lbl: 'Genres' },
+      { val: totalPlaylists, lbl: 'Playlists' },
+      { val: totalArtists.toLocaleString(), lbl: 'Artist appearances' },
+      { val: avgPop, lbl: 'Avg popularity' },
+      { val: maxPop, lbl: 'Peak popularity' },
+    ];
+  } else {
+    const totalArtists = data.children.reduce((s, p) => s + (p.artist_count || 0), 0);
+    const allPops = [];
+    data.children.forEach(p => p.children && p.children.forEach(a => allPops.push(a.popularity)));
+    const avgPop = allPops.length ? (allPops.reduce((a,b)=>a+b,0)/allPops.length).toFixed(1) : '—';
+    const topArtist = allPops.length ? data.children.flatMap(p => p.children || []).sort((a,b) => b.popularity - a.popularity)[0] : null;
+    stats = [
+      { val: data.children.length, lbl: 'Playlists' },
+      { val: totalArtists.toLocaleString(), lbl: 'Artist appearances' },
+      { val: avgPop, lbl: 'Avg popularity' },
+      { val: topArtist ? topArtist.name : '—', lbl: 'Top artist' },
+    ];
+  }
+  bar.innerHTML = stats.map(s => `<div class="stat"><span class="stat-val">${s.val}</span><span class="stat-lbl">${s.lbl}</span></div>`).join('');
+}
+
+// ── Init ───────────────────────────────────────────────────────────────
+window.resetAll = resetAll;
+window.drillToGenre = drillToGenre;
+
+window.addEventListener('resize', () => {
+  if (currentGenre) drillToGenre(currentGenre);
+  else renderOverview();
+});
+
+renderOverview();
+</script>
+</body>
+</html>
