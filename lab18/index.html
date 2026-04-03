@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tokyo Revengers — Faction Chord Diagram</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Noto+Sans+JP:wght@300;400;700&family=Black+Han+Sans&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #07090c;
+    --bg2:      #0d1017;
+    --panel:    #121620;
+    --border:   #1c2330;
+    --text:     #c8cdd8;
+    --muted:    #48556a;
+    --accent:   #f0c040;
+
+    --toman:       #3b8ef0;
+    --valhalla:    #d43a3a;
+    --blackdragon: #9b59b6;
+    --brahman:     #e8a020;
+    --kantou:      #2ecc71;
+    --neutral:     #7a8fa8;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans JP', sans-serif;
+    overflow: hidden;
+  }
+
+  /* grain */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.025;
+    pointer-events: none;
+    z-index: 50;
+  }
+
+  header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 40;
+    padding: 16px 32px;
+    display: flex; align-items: baseline; gap: 14px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(to bottom, var(--bg) 60%, transparent);
+  }
+
+  .title-jp {
+    font-family: 'Black Han Sans', sans-serif;
+    font-size: 9px; letter-spacing: 0.3em;
+    color: var(--muted); text-transform: uppercase;
+  }
+
+  h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 26px; letter-spacing: 0.1em; color: #fff;
+  }
+  h1 em { color: var(--accent); font-style: normal; }
+
+  .subtitle {
+    margin-left: auto;
+    font-size: 9px; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 2px;
+  }
+
+  #chart-wrap {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* TOOLTIP */
+  #tooltip {
+    position: fixed; z-index: 100;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .tip-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 10px 14px;
+    min-width: 180px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.7);
+    position: relative;
+  }
+  .tip-box::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--tc, #fff);
+    box-shadow: 0 0 8px var(--tc, #fff);
+  }
+  .tip-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px; letter-spacing: 0.07em;
+    color: #fff; line-height: 1; margin-bottom: 6px;
+  }
+  .tip-detail {
+    font-size: 10px; color: var(--muted);
+    line-height: 1.7;
+  }
+  .tip-detail b { color: var(--text); }
+
+  /* LEGEND */
+  #legend {
+    position: fixed; bottom: 28px; left: 32px;
+    z-index: 40;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .leg-head {
+    font-size: 8px; letter-spacing: 0.25em;
+    text-transform: uppercase; color: var(--muted);
+    margin-bottom: 3px;
+  }
+  .leg-item {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 10.5px; cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .leg-item:hover { opacity: 0.6; }
+  .leg-swatch {
+    width: 12px; height: 12px;
+    border-radius: 2px; flex-shrink: 0;
+  }
+
+  /* LINK TYPE LEGEND */
+  #link-legend {
+    position: fixed; bottom: 28px; right: 32px;
+    z-index: 40;
+    display: flex; flex-direction: column; gap: 6px;
+    text-align: right;
+  }
+  .link-leg-item {
+    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    font-size: 10px; color: var(--muted);
+  }
+  .link-line {
+    width: 28px; height: 2px; border-radius: 1px;
+  }
+
+  /* instruction */
+  #hint {
+    position: fixed; top: 70px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--muted);
+    pointer-events: none;
+    z-index: 40;
+    opacity: 1;
+    transition: opacity 1s;
+  }
+
+  .arc-group { cursor: pointer; }
+  .chord path { cursor: pointer; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="title-jp">東京卍リベンジャーズ</div>
+    <h1>TOKYO <em>REVENGERS</em></h1>
+  </div>
+  <div class="subtitle">Faction Chord Diagram</div>
+</header>
+
+<div id="hint">Hover arcs or chords to explore connections</div>
+
+<div id="chart-wrap">
+  <svg id="svg"></svg>
+</div>
+
+<div id="tooltip"><div class="tip-box">
+  <div class="tip-title" id="tip-t"></div>
+  <div class="tip-detail" id="tip-d"></div>
+</div></div>
+
+<div id="legend">
+  <div class="leg-head">Factions</div>
+</div>
+
+<div id="link-legend">
+  <div class="leg-head" style="text-align:right">Connection Type</div>
+  <div class="link-leg-item"><span>Alliance</span><div class="link-line" style="background:#3b5a8a"></div></div>
+  <div class="link-leg-item"><span>Rivalry</span><div class="link-line" style="background:#7a2020"></div></div>
+  <div class="link-leg-item"><span>Family / Sibling</span><div class="link-line" style="background:#7a6010"></div></div>
+  <div class="link-leg-item"><span>Romantic</span><div class="link-line" style="background:#7a2040"></div></div>
+</div>
+
+<script>
+// ── FACTIONS ────────────────────────────────────────────────────────────────
+const factions = [
+  { id: "toman",       name: "Toman",         color: "#3b8ef0", members: ["Takemichi","Mikey","Draken","Chifuyu","Baji","Mitsuya","Pah-chin","Angry","Smiley","Hakkai"] },
+  { id: "valhalla",    name: "Valhalla",       color: "#d43a3a", members: ["Kisaki","Hanma","Kazutora"] },
+  { id: "blackdragon", name: "Black Dragon",   color: "#9b59b6", members: ["Taiju","Wakasa"] },
+  { id: "brahman",     name: "Brahman",        color: "#e8a020", members: ["Senju","Haruchiyo"] },
+  { id: "kantou",      name: "Kantou Manji",   color: "#2ecc71", members: ["Izana","Kakucho","Sanzu"] },
+  { id: "neutral",     name: "Unaffiliated",   color: "#7a8fa8", members: ["Shinichiro","Hina","Naoto"] },
+];
+
+// ── CONNECTION MATRIX (faction × faction, weighted by # of links) ─────────
+// Rows/cols: toman, valhalla, blackdragon, brahman, kantou, neutral
+// matrix[i][j] = connection weight (i→j, symmetric)
+// Diagonal = internal bonds (within faction)
+const matrix = [
+  // tom  val  bdrg  brah  kant  neut
+  [  18,   6,    3,    1,    3,    5  ],  // toman
+  [   6,   4,    0,    0,    0,    2  ],  // valhalla
+  [   3,   0,    2,    0,    0,    2  ],  // blackdragon
+  [   1,   0,    0,    2,    2,    1  ],  // brahman
+  [   3,   0,    0,    2,    3,    1  ],  // kantou
+  [   5,   2,    2,    1,    1,    1  ],  // neutral
+];
+
+// Cross-faction narrative context for tooltips
+const crossContext = {
+  "toman-valhalla":    { label:"6 cross-links", detail:"Baji defects; Kazutora betrayal; Kisaki infiltrates; Takemichi vs Kisaki rivalry" },
+  "toman-blackdragon": { label:"3 cross-links", detail:"Hakkai's siblings conflict with Taiju; Toman vs Black Dragon war arc" },
+  "toman-brahman":     { label:"1 cross-link",  detail:"Senju allies with Takemichi in the Three Deities arc" },
+  "toman-kantou":      { label:"3 cross-links", detail:"Mikey leads Kantou Manji; Izana's half-brother reveal; Sanzu's loyalty" },
+  "toman-neutral":     { label:"5 cross-links", detail:"Shinichiro founds Black Dragon; Hina & Naoto guide Takemichi's leaps" },
+  "valhalla-blackdragon": { label:"0 links",    detail:"No direct connections in canon" },
+  "valhalla-brahman":  { label:"0 links",       detail:"No direct connections in canon" },
+  "valhalla-kantou":   { label:"0 links",       detail:"No direct connections in canon" },
+  "valhalla-neutral":  { label:"2 cross-links", detail:"Kisaki obsession with Hina; Naoto opposes Kisaki across timelines" },
+  "blackdragon-brahman":{ label:"0 links",      detail:"No direct connections in canon" },
+  "blackdragon-kantou":{ label:"0 links",       detail:"No direct connections in canon" },
+  "blackdragon-neutral":{ label:"2 cross-links",detail:"Shinichiro co-founds Black Dragon with Wakasa & Takeomi" },
+  "brahman-kantou":    { label:"2 cross-links", detail:"Haruchiyo (Sanzu) bridges Brahman and Kantou Manji" },
+  "brahman-neutral":   { label:"1 cross-link",  detail:"Senju connects to Takemichi's broader mission" },
+  "kantou-neutral":    { label:"1 cross-link",  detail:"Izana's tragic backstory ties into broader unaffiliated arcs" },
+};
+
+function getCtx(i, j) {
+  const fi = factions[i].id, fj = factions[j].id;
+  const key1 = `${fi}-${fj}`, key2 = `${fj}-${fi}`;
+  return crossContext[key1] || crossContext[key2] || null;
+}
+
+// ── LAYOUT ──────────────────────────────────────────────────────────────────
+const W = window.innerWidth, H = window.innerHeight;
+const size = Math.min(W, H) * 0.78;
+const outerR = size / 2;
+const innerR = outerR - 28;
+const padAngle = 0.03;
+
+const svg = d3.select("#svg")
+  .attr("width", W).attr("height", H);
+
+const g = svg.append("g")
+  .attr("transform", `translate(${W/2},${H/2})`);
+
+// ── CHORD LAYOUT ─────────────────────────────────────────────────────────────
+const chord = d3.chord()
+  .padAngle(padAngle)
+  .sortSubgroups(d3.descending)
+  .sortChords(d3.descending);
+
+const chords = chord(matrix);
+
+const arc   = d3.arc().innerRadius(innerR).outerRadius(outerR);
+const ribbon = d3.ribbon().radius(innerR - 1);
+
+// ── DEFS: glows ──────────────────────────────────────────────────────────────
+const defs = svg.append("defs");
+factions.forEach((f, i) => {
+  const flt = defs.append("filter").attr("id", `gf-${i}`)
+    .attr("x","-30%").attr("y","-30%").attr("width","160%").attr("height","160%");
+  flt.append("feGaussianBlur").attr("in","SourceGraphic").attr("stdDeviation","5").attr("result","blur");
+  const m = flt.append("feMerge");
+  m.append("feMergeNode").attr("in","blur");
+  m.append("feMergeNode").attr("in","SourceGraphic");
+});
+
+// ── DRAW CHORDS ──────────────────────────────────────────────────────────────
+const chordPaths = g.append("g").attr("class","chords")
+  .selectAll("path")
+  .data(chords)
+  .join("path")
+    .attr("class","chord")
+    .attr("d", ribbon)
+    .attr("fill", d => {
+      // blend source & target colors
+      return factions[d.source.index].color + "40";
+    })
+    .attr("stroke", d => factions[d.source.index].color + "70")
+    .attr("stroke-width", 0.5)
+    .style("transition", "opacity 0.25s");
+
+// ── DRAW ARCS ────────────────────────────────────────────────────────────────
+const arcGroups = g.append("g").attr("class","arcs")
+  .selectAll("g")
+  .data(chords.groups)
+  .join("g").attr("class","arc-group");
+
+arcGroups.append("path")
+  .attr("d", arc)
+  .attr("fill", d => factions[d.index].color)
+  .attr("stroke", d => factions[d.index].color)
+  .attr("stroke-width", 0.5)
+  .attr("filter", d => `url(#gf-${d.index})`)
+  .style("transition","opacity 0.25s");
+
+// Tick marks on arc
+arcGroups.each(function(d) {
+  const groupEl = d3.select(this);
+  const step = (d.endAngle - d.startAngle) / 5;
+  const tickAngles = d3.range(d.startAngle, d.endAngle, step).slice(1, -1);
+  tickAngles.forEach(angle => {
+    const cos = Math.cos(angle - Math.PI/2);
+    const sin = Math.sin(angle - Math.PI/2);
+    groupEl.append("line")
+      .attr("x1", (innerR + 1) * cos).attr("y1", (innerR + 1) * sin)
+      .attr("x2", outerR * cos).attr("y2", outerR * sin)
+      .attr("stroke", "#000").attr("stroke-width", 1).attr("opacity", 0.3);
+  });
+});
+
+// Labels
+arcGroups.append("text")
+  .each(d => { d.angle = (d.startAngle + d.endAngle) / 2; })
+  .attr("dy", "0.35em")
+  .attr("transform", d => `
+    rotate(${(d.angle * 180 / Math.PI - 90)})
+    translate(${outerR + 14})
+    ${d.angle > Math.PI ? "rotate(180)" : ""}
+  `)
+  .attr("text-anchor", d => d.angle > Math.PI ? "end" : "start")
+  .attr("font-family", "'Bebas Neue', sans-serif")
+  .attr("font-size", d => {
+    const span = d.endAngle - d.startAngle;
+    return span > 0.6 ? 14 : span > 0.3 ? 11 : 9;
+  })
+  .attr("fill", d => factions[d.index].color)
+  .attr("letter-spacing", "0.08em")
+  .text(d => factions[d.index].name.toUpperCase());
+
+// Member count sublabel
+arcGroups.append("text")
+  .each(d => { d.angle = (d.startAngle + d.endAngle) / 2; })
+  .attr("dy", "0.35em")
+  .attr("transform", d => `
+    rotate(${(d.angle * 180 / Math.PI - 90)})
+    translate(${outerR + (factions[d.index].name.length > 8 ? 32 : 30)})
+    ${d.angle > Math.PI ? "rotate(180)" : ""}
+  `)
+  .attr("text-anchor", d => d.angle > Math.PI ? "end" : "start")
+  .attr("font-size", 8)
+  .attr("fill", "#48556a")
+  .attr("letter-spacing", "0.12em")
+  .text(d => `${factions[d.index].members.length} members`);
+
+// ── INTERACTIONS ─────────────────────────────────────────────────────────────
+const tooltip   = document.getElementById("tooltip");
+const tipTitle  = document.getElementById("tip-t");
+const tipDetail = document.getElementById("tip-d");
+const tipBox    = document.querySelector(".tip-box");
+const hint      = document.getElementById("hint");
+let hintFaded   = false;
+
+function fadeHint() {
+  if (!hintFaded) { hint.style.opacity = 0; hintFaded = true; }
+}
+
+function showTip(event, title, detail, color) {
+  tipTitle.textContent = title;
+  tipDetail.innerHTML  = detail;
+  tipBox.style.setProperty("--tc", color);
+  tooltip.style.opacity = 1;
+  moveTip(event);
+}
+
+function moveTip(event) {
+  const x = event.clientX + 14, y = event.clientY - 14;
+  tooltip.style.left = Math.min(x, W - 220) + "px";
+  tooltip.style.top  = Math.max(y, 10) + "px";
+}
+
+function hideTip() { tooltip.style.opacity = 0; }
+
+// Arc hover
+arcGroups
+  .on("mouseenter", (event, d) => {
+    fadeHint();
+    const f = factions[d.index];
+    // dim chords that don't touch this arc
+    chordPaths.style("opacity", c =>
+      c.source.index === d.index || c.target.index === d.index ? 1 : 0.06);
+    arcGroups.select("path").style("opacity", a =>
+      a.index === d.index ? 1 : 0.35);
+
+    const internalVal = matrix[d.index][d.index];
+    const external = matrix[d.index].reduce((s,v,i) => i !== d.index ? s + v : s, 0);
+
+    showTip(event,
+      f.name,
+      `<b>Members:</b> ${f.members.join(", ")}<br>
+       <b>Internal bonds:</b> ${internalVal}<br>
+       <b>Cross-faction links:</b> ${external}`,
+      f.color
+    );
+  })
+  .on("mousemove", moveTip)
+  .on("mouseleave", () => {
+    chordPaths.style("opacity", 1);
+    arcGroups.select("path").style("opacity", 1);
+    hideTip();
+  });
+
+// Chord hover
+chordPaths
+  .on("mouseenter", (event, d) => {
+    fadeHint();
+    const fi = factions[d.source.index], fj = factions[d.target.index];
+    const isSelf = d.source.index === d.target.index;
+
+    chordPaths.style("opacity", c =>
+      c === d ? 1 : 0.06);
+
+    const ctx = isSelf ? null : getCtx(d.source.index, d.target.index);
+    const weight = isSelf
+      ? matrix[d.source.index][d.source.index]
+      : matrix[d.source.index][d.target.index];
+
+    const title = isSelf
+      ? `${fi.name} — Internal`
+      : `${fi.name} ↔ ${fj.name}`;
+
+    const detail = isSelf
+      ? `<b>Internal bond strength:</b> ${weight}<br><b>Members:</b> ${fi.members.join(", ")}`
+      : ctx
+        ? `<b>${ctx.label}</b><br>${ctx.detail}`
+        : `<b>Connection weight:</b> ${weight}`;
+
+    showTip(event, title, detail, isSelf ? fi.color : fi.color);
+  })
+  .on("mousemove", moveTip)
+  .on("mouseleave", () => {
+    chordPaths.style("opacity", 1);
+    hideTip();
+  });
+
+// ── LEGEND ──────────────────────────────────────────────────────────────────
+const legendEl = document.getElementById("legend");
+factions.forEach(f => {
+  const item = document.createElement("div");
+  item.className = "leg-item";
+  item.innerHTML = `<div class="leg-swatch" style="background:${f.color};box-shadow:0 0 5px ${f.color}60"></div><span>${f.name}</span>`;
+  legendEl.appendChild(item);
+});
+
+// ── ENTRANCE ANIMATION ───────────────────────────────────────────────────────
+arcGroups.select("path")
+  .style("opacity", 0)
+  .transition().duration(800).delay((d, i) => i * 80)
+  .style("opacity", 1);
+
+chordPaths
+  .style("opacity", 0)
+  .transition().duration(900).delay((d, i) => 500 + i * 40)
+  .style("opacity", 1);
+
+arcGroups.selectAll("text")
+  .style("opacity", 0)
+  .transition().duration(600).delay((d, i) => 600 + i * 60)
+  .style("opacity", 1);
+
+// ── RESIZE ───────────────────────────────────────────────────────────────────
+window.addEventListener("resize", () => location.reload());
+</script>
+</body>
+</html>
