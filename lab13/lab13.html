@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Power Plants Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f7f5f0;
+    --card: #ffffff;
+    --ink: #1a1a1a;
+    --muted: #6b6b6b;
+    --border: #e0ddd6;
+    --nuclear: #e8527a;
+    --gas: #2e2e2e;
+    --wind: #f0b429;
+    --coal: #40c4c4;
+    --solar: #ff8c00;
+    --hydro: #4a90d9;
+    --fossil-color: #555555;
+    --renewable-color: #3db869;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 2rem;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  header h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 2rem;
+    letter-spacing: -0.02em;
+  }
+
+  header p {
+    font-size: 0.85rem;
+    color: var(--muted);
+    font-weight: 300;
+  }
+
+  .dashboard {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 1.5rem;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+
+  .card.scatter { grid-row: 1 / 3; }
+
+  .card h2 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1rem;
+    font-weight: 400;
+    color: var(--ink);
+    margin-bottom: 0.25rem;
+  }
+  .card .subtitle {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-bottom: 1rem;
+  }
+
+  svg text { font-family: 'DM Sans', sans-serif; }
+
+  .axis-label {
+    font-size: 12px;
+    fill: var(--ink);
+    font-weight: 500;
+  }
+
+  .tick text { font-size: 11px; fill: var(--muted); }
+  .tick line, .domain { stroke: var(--border); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin-top: 0.75rem; }
+  .legend-item { display: flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; color: var(--ink); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid; }
+  .legend-line { width: 22px; height: 2px; }
+  .legend-bar { width: 12px; height: 12px; border-radius: 2px; }
+
+  .tooltip {
+    position: fixed;
+    background: var(--ink);
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 999;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Global Power Plants</h1>
+  <p>200 plants · capacity (MW) over time</p>
+</header>
+
+<div class="dashboard">
+  <div class="card scatter">
+    <h2>Plant Size by Year &amp; Type</h2>
+    <p class="subtitle">Each dot = one plant, colored by energy type</p>
+    <div id="scatter"></div>
+    <div class="legend" id="scatter-legend"></div>
+  </div>
+  <div class="card">
+    <h2>Average Capacity: Fossil vs Renewable</h2>
+    <p class="subtitle">Mean capacity (MW) per decade</p>
+    <div id="linechart"></div>
+    <div class="legend" id="line-legend"></div>
+  </div>
+  <div class="card">
+    <h2>Total Capacity by Era</h2>
+    <p class="subtitle">Cumulative MW per decade, fossil vs renewable</p>
+    <div id="barchart"></div>
+    <div class="legend" id="bar-legend"></div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ── Data ─────────────────────────────────────────────────────────────────────
+const CSV = `plant_id,plant_name,country,region,energy_type,capacity_mw,year_built,latitude,longitude,owner_company
+1,Nuclear Plant 1,Morocco,Africa,Nuclear,935,1999,-11.657,127.901,AfricaWind
+2,Gas Plant 2,Poland,Europe,Gas,305,1992,52.434,-97.862,Maghreb Power
+3,Wind Plant 3,China,Asia,Wind,218,2014,-26.303,79.009,AusRenew
+4,Nuclear Plant 4,South Africa,Africa,Nuclear,1367,2002,4.387,-95.99,SunGrid Corp
+5,Coal Plant 5,India,Asia,Coal,925,1985,28.416,101.182,HydroNorth
+6,Wind Plant 6,Canada,North America,Wind,180,2013,56.352,-62.742,DragonPower
+7,Nuclear Plant 7,India,Asia,Nuclear,924,1989,24.072,21.586,EuroSolar AG
+8,Coal Plant 8,Brazil,South America,Coal,733,1989,-11.502,75.304,AsiaEnergy Co
+9,Hydro Plant 9,Egypt,Africa,Hydro,460,1986,50.452,-73.215,DragonPower
+10,Nuclear Plant 10,France,Europe,Nuclear,1104,1992,39.596,133.067,EuroNuke
+11,Nuclear Plant 11,UK,Europe,Nuclear,1377,1997,-20.113,-117.405,Maghreb Power
+12,Gas Plant 12,Egypt,Africa,Gas,738,1996,56.634,-51.21,HydroNorth
+13,Wind Plant 13,Poland,Europe,Wind,398,2018,18.113,140.113,PowerGen LLC
+14,Coal Plant 14,Germany,Europe,Coal,806,1990,38.921,96.096,EuroSolar AG
+15,Hydro Plant 15,France,Europe,Hydro,628,1985,32.967,34.821,PowerGen LLC
+16,Nuclear Plant 16,Japan,Asia,Nuclear,944,2006,-39.366,131.745,DragonPower
+17,Solar Plant 17,Japan,Asia,Solar,159,2013,4.15,133.863,AusRenew
+18,Wind Plant 18,UK,Europe,Wind,233,2008,47.373,19.745,EuroNuke
+19,Wind Plant 19,France,Europe,Wind,174,2015,-38.351,70.943,AusRenew
+20,Wind Plant 20,India,Asia,Wind,328,2013,11.435,92.416,SunGrid Corp
+21,Wind Plant 21,UK,Europe,Wind,283,2017,25.984,-43.002,AsiaEnergy Co
+22,Hydro Plant 22,Germany,Europe,Hydro,926,1980,0.059,130.777,DragonPower
+23,Solar Plant 23,UK,Europe,Solar,356,2015,52.595,-32.372,AusRenew
+24,Solar Plant 24,Argentina,South America,Solar,282,2023,-40.893,93.623,AfricaWind
+25,Wind Plant 25,Poland,Europe,Wind,151,2017,16.01,-79.117,DragonPower
+26,Hydro Plant 26,China,Asia,Hydro,962,2001,-16.834,39.211,AfricaWind
+27,Wind Plant 27,Poland,Europe,Wind,287,2015,19.647,-60.574,DragonPower
+28,Coal Plant 28,Australia,Oceania,Coal,1142,1993,-6.827,-117.085,BrazilEnergy
+29,Hydro Plant 29,South Africa,Africa,Hydro,641,2002,-9.369,6.871,Maghreb Power
+30,Solar Plant 30,USA,North America,Solar,412,2020,38.612,-103.277,SunGrid Corp
+31,Gas Plant 31,China,Asia,Gas,456,2003,34.052,103.12,EuroNuke
+32,Nuclear Plant 32,USA,North America,Nuclear,1289,1998,45.672,-88.234,PowerGen LLC
+33,Coal Plant 33,India,Asia,Coal,987,1991,22.341,83.456,AfricaWind
+34,Wind Plant 34,Germany,Europe,Wind,312,2016,53.452,10.231,EuroSolar AG
+35,Solar Plant 35,Spain,Europe,Solar,278,2019,37.891,-5.432,AusRenew
+36,Gas Plant 36,Brazil,South America,Gas,623,2007,-23.543,-46.783,DragonPower
+37,Nuclear Plant 37,South Korea,Asia,Nuclear,1456,2004,37.452,128.234,PowerGen LLC
+38,Coal Plant 38,China,Asia,Coal,1234,1988,39.123,116.456,AsiaEnergy Co
+39,Hydro Plant 39,Canada,North America,Hydro,834,1979,51.234,-115.678,HydroNorth
+40,Wind Plant 40,USA,North America,Wind,445,2019,41.234,-105.678,SunGrid Corp
+41,Solar Plant 41,Australia,Oceania,Solar,334,2021,-33.456,151.234,AusRenew
+42,Gas Plant 42,UK,Europe,Gas,567,2001,51.678,-1.234,EuroNuke
+43,Coal Plant 43,South Africa,Africa,Coal,1089,1994,-29.567,28.678,AfricaWind
+44,Nuclear Plant 44,Germany,Europe,Nuclear,1234,1987,52.345,13.456,EuroSolar AG
+45,Hydro Plant 45,Brazil,South America,Hydro,1567,1984,-8.456,-63.234,BrazilEnergy
+46,Wind Plant 46,Spain,Europe,Wind,234,2018,40.678,-4.567,AusRenew
+47,Solar Plant 47,India,Asia,Solar,289,2020,23.456,77.234,SunGrid Corp
+48,Gas Plant 48,France,Europe,Gas,478,2005,48.789,2.345,EuroNuke
+49,Coal Plant 49,Poland,Europe,Coal,945,1986,52.123,21.234,EuroSolar AG
+50,Nuclear Plant 50,Japan,Asia,Nuclear,1123,1995,35.789,139.456,DragonPower
+51,Hydro Plant 51,Norway,Europe,Hydro,756,1977,60.234,6.789,HydroNorth
+52,Wind Plant 52,Denmark,Europe,Wind,189,2020,56.234,10.123,AusRenew
+53,Solar Plant 53,Morocco,Africa,Solar,456,2022,31.789,-7.234,AfricaWind
+54,Gas Plant 54,Argentina,South America,Gas,389,2009,-34.234,-65.456,BrazilEnergy
+55,Coal Plant 55,Australia,Oceania,Coal,876,1990,-27.345,152.789,AusRenew
+56,Nuclear Plant 56,Canada,North America,Nuclear,678,2001,46.234,-77.123,PowerGen LLC
+57,Hydro Plant 57,China,Asia,Hydro,2300,1997,30.789,110.234,AsiaEnergy Co
+58,Wind Plant 58,China,Asia,Wind,523,2015,36.456,104.567,DragonPower
+59,Solar Plant 59,USA,North America,Solar,567,2021,35.678,-116.789,SunGrid Corp
+60,Gas Plant 60,Egypt,Africa,Gas,445,2010,30.123,31.456,AfricaWind
+61,Coal Plant 61,Germany,Europe,Coal,1100,1983,51.234,7.678,EuroSolar AG
+62,Nuclear Plant 62,France,Europe,Nuclear,1456,1991,47.234,1.789,EuroNuke
+63,Hydro Plant 63,Russia,Europe,Hydro,1890,1968,55.789,56.234,HydroNorth
+64,Wind Plant 64,UK,Europe,Wind,367,2021,53.789,-3.456,AusRenew
+65,Solar Plant 65,Chile,South America,Solar,312,2022,-23.456,-69.789,BrazilEnergy
+66,Gas Plant 66,Nigeria,Africa,Gas,512,2008,6.789,3.234,AfricaWind
+67,Coal Plant 67,India,Asia,Coal,1034,1993,25.789,85.234,AsiaEnergy Co
+68,Nuclear Plant 68,USA,North America,Nuclear,1567,1993,41.789,-87.456,PowerGen LLC
+69,Hydro Plant 69,Colombia,South America,Hydro,678,1988,4.789,-75.234,BrazilEnergy
+70,Wind Plant 70,Netherlands,Europe,Wind,456,2022,52.789,4.567,AusRenew
+71,Solar Plant 71,Germany,Europe,Solar,389,2020,48.789,11.234,EuroSolar AG
+72,Gas Plant 72,Saudi Arabia,Asia,Gas,934,2006,24.789,46.234,DragonPower
+73,Coal Plant 73,Russia,Europe,Coal,1234,1978,55.234,61.789,HydroNorth
+74,Nuclear Plant 74,China,Asia,Nuclear,1789,2010,30.234,121.456,AsiaEnergy Co
+75,Hydro Plant 75,India,Asia,Hydro,890,1981,14.234,76.789,DragonPower
+76,Wind Plant 76,Sweden,Europe,Wind,278,2019,60.789,17.234,AusRenew
+77,Solar Plant 77,South Africa,Africa,Solar,445,2023,-26.789,27.234,AfricaWind
+78,Gas Plant 78,Mexico,North America,Gas,623,2012,20.789,-103.234,BrazilEnergy
+79,Coal Plant 79,Poland,Europe,Coal,789,1984,50.789,19.234,EuroSolar AG
+80,Nuclear Plant 80,India,Asia,Nuclear,989,2000,22.789,73.234,AsiaEnergy Co
+81,Hydro Plant 81,Peru,South America,Hydro,512,1990,-9.789,-76.234,BrazilEnergy
+82,Wind Plant 82,Portugal,Europe,Wind,212,2017,39.789,-8.234,AusRenew
+83,Solar Plant 83,Italy,Europe,Solar,334,2019,41.789,12.456,EuroNuke
+84,Gas Plant 84,Indonesia,Asia,Gas,578,2011,-6.789,107.234,DragonPower
+85,Coal Plant 85,South Africa,Africa,Coal,934,1987,-25.789,27.456,AfricaWind
+86,Nuclear Plant 86,UK,Europe,Nuclear,1234,1996,52.789,-2.456,EuroNuke
+87,Hydro Plant 87,Turkey,Europe,Hydro,678,1993,38.789,32.234,HydroNorth
+88,Wind Plant 88,Italy,Europe,Wind,245,2020,42.789,12.567,AusRenew
+89,Solar Plant 89,Pakistan,Asia,Solar,267,2022,30.789,72.234,DragonPower
+90,Gas Plant 90,UK,Europe,Gas,534,1999,52.234,-1.567,EuroNuke
+91,Coal Plant 90,USA,North America,Coal,1089,1989,41.567,-88.789,PowerGen LLC
+92,Nuclear Plant 91,South Korea,Asia,Nuclear,1345,2005,35.567,128.789,DragonPower
+93,Hydro Plant 92,Venezuela,South America,Hydro,1234,1986,7.789,-64.456,BrazilEnergy
+94,Wind Plant 93,Austria,Europe,Wind,189,2018,47.567,14.234,AusRenew
+95,Solar Plant 94,UAE,Asia,Solar,789,2023,24.567,54.789,DragonPower
+96,Gas Plant 95,Russia,Europe,Gas,812,2003,57.789,57.234,HydroNorth
+97,Coal Plant 96,Czech Republic,Europe,Coal,834,1980,50.234,15.789,EuroSolar AG
+98,Nuclear Plant 97,Ukraine,Europe,Nuclear,1567,1988,47.234,34.789,EuroNuke
+99,Hydro Plant 98,Sweden,Europe,Hydro,623,1974,62.789,17.456,HydroNorth
+100,Wind Plant 99,Finland,Europe,Wind,156,2021,62.234,25.789,AusRenew
+101,Solar Plant 100,Japan,Asia,Solar,423,2022,35.234,136.789,DragonPower
+102,Gas Plant 101,South Korea,Asia,Gas,678,2008,36.789,127.567,AsiaEnergy Co
+103,Coal Plant 102,Ukraine,Europe,Coal,1045,1985,49.789,30.234,EuroSolar AG
+104,Nuclear Plant 103,Pakistan,Asia,Nuclear,789,2015,33.789,73.456,AsiaEnergy Co
+105,Hydro Plant 104,Ethiopia,Africa,Hydro,567,2009,9.234,38.789,AfricaWind
+106,Wind Plant 105,Belgium,Europe,Wind,234,2019,50.789,4.234,AusRenew
+107,Solar Plant 106,Greece,Europe,Solar,289,2021,37.789,23.234,EuroNuke
+108,Gas Plant 107,Thailand,Asia,Gas,489,2010,13.789,100.234,DragonPower
+109,Coal Plant 108,Taiwan,Asia,Coal,956,1992,24.234,120.789,AsiaEnergy Co
+110,Nuclear Plant 109,Finland,Europe,Nuclear,1012,1979,61.789,26.234,EuroNuke
+111,Hydro Plant 110,Myanmar,Asia,Hydro,445,2013,19.789,96.234,DragonPower
+112,Wind Plant 111,Czech Republic,Europe,Wind,167,2020,49.789,15.234,AusRenew
+113,Solar Plant 112,Israel,Asia,Solar,312,2022,31.789,34.567,DragonPower
+114,Gas Plant 113,Poland,Europe,Gas,534,2006,52.456,20.789,EuroSolar AG
+115,Coal Plant 114,Greece,Europe,Coal,678,1983,40.234,22.789,EuroNuke
+116,Nuclear Plant 115,Switzerland,Europe,Nuclear,1178,1984,47.456,8.234,EuroSolar AG
+117,Hydro Plant 116,Mozambique,Africa,Hydro,789,1974,-15.789,32.456,AfricaWind
+118,Wind Plant 117,Ireland,Europe,Wind,223,2018,53.456,-8.234,AusRenew
+119,Solar Plant 118,Jordan,Asia,Solar,178,2021,31.456,36.789,DragonPower
+120,Gas Plant 119,Hungary,Europe,Gas,412,2007,47.789,19.456,EuroSolar AG
+121,Coal Plant 120,Romania,Europe,Coal,789,1982,44.789,25.456,EuroNuke
+122,Nuclear Plant 121,Netherlands,Europe,Nuclear,456,1973,52.456,4.789,HydroNorth
+123,Hydro Plant 122,Laos,Asia,Hydro,389,2010,18.234,102.789,DragonPower
+124,Wind Plant 123,Romania,Europe,Wind,345,2019,45.234,28.456,AusRenew
+125,Solar Plant 124,Egypt,Africa,Solar,534,2023,28.789,30.456,AfricaWind
+126,Gas Plant 125,Malaysia,Asia,Gas,567,2011,3.789,109.234,DragonPower
+127,Coal Plant 126,Bulgaria,Europe,Coal,712,1981,42.456,25.789,EuroSolar AG
+128,Nuclear Plant 127,Argentina,South America,Nuclear,745,1984,-34.456,-64.789,BrazilEnergy
+129,Hydro Plant 128,Iran,Asia,Hydro,512,1997,32.789,51.456,DragonPower
+130,Wind Plant 129,Hungary,Europe,Wind,134,2021,47.234,18.789,AusRenew
+131,Solar Plant 130,Mexico,North America,Solar,389,2022,22.456,-102.789,BrazilEnergy
+132,Gas Plant 131,Venezuela,South America,Gas,478,2004,10.789,-66.456,BrazilEnergy
+133,Coal Plant 132,Kazakhstan,Asia,Coal,934,1979,51.789,71.234,AsiaEnergy Co
+134,Nuclear Plant 133,Belgium,Europe,Nuclear,1045,1975,50.789,4.456,EuroNuke
+135,Hydro Plant 134,Tajikistan,Asia,Hydro,567,1976,38.789,72.456,DragonPower
+136,Wind Plant 135,Slovakia,Europe,Wind,123,2020,48.789,19.456,AusRenew
+137,Solar Plant 136,Bangladesh,Asia,Solar,145,2022,23.789,90.456,DragonPower
+138,Gas Plant 137,Serbia,Europe,Gas,345,2008,44.234,20.789,EuroSolar AG
+139,Coal Plant 138,Serbia,Europe,Coal,678,1985,44.456,21.234,EuroSolar AG
+140,Nuclear Plant 139,Mexico,North America,Nuclear,612,1990,19.789,-96.456,BrazilEnergy
+141,Hydro Plant 140,Sudan,Africa,Hydro,445,2009,15.789,32.234,AfricaWind
+142,Wind Plant 141,Bulgaria,Europe,Wind,189,2019,42.789,26.234,AusRenew
+143,Solar Plant 142,Peru,South America,Solar,234,2023,-12.456,-77.234,BrazilEnergy
+144,Gas Plant 143,Pakistan,Asia,Gas,456,2013,30.234,70.789,DragonPower
+145,Coal Plant 144,Mongolia,Asia,Coal,412,1977,47.789,107.234,AsiaEnergy Co
+146,Nuclear Plant 145,Brazil,South America,Nuclear,657,1982,-22.789,-43.234,BrazilEnergy
+147,Hydro Plant 146,Cameroon,Africa,Hydro,334,1988,5.789,13.456,AfricaWind
+148,Wind Plant 147,Latvia,Europe,Wind,112,2020,56.789,24.456,AusRenew
+149,Solar Plant 148,Nigeria,Africa,Solar,278,2022,9.789,8.234,AfricaWind
+150,Gas Plant 149,Libya,Africa,Gas,389,2005,32.456,13.789,AfricaWind
+151,Coal Plant 150,North Korea,Asia,Coal,567,1980,39.789,125.456,AsiaEnergy Co
+152,Nuclear Plant 151,Taiwan,Asia,Nuclear,951,1985,24.789,121.234,AsiaEnergy Co
+153,Hydro Plant 152,Uganda,Africa,Hydro,312,2012,0.456,33.234,AfricaWind
+154,Wind Plant 153,Lithuania,Europe,Wind,145,2021,55.789,23.456,AusRenew
+155,Solar Plant 154,Kenya,Africa,Solar,189,2021,-1.234,37.789,AfricaWind
+156,Gas Plant 155,Algeria,Africa,Gas,534,2009,28.789,2.456,AfricaWind
+157,Coal Plant 156,Zimbabwe,Africa,Coal,489,1983,-18.789,31.456,AfricaWind
+158,Nuclear Plant 157,Slovenia,Europe,Nuclear,696,1983,46.234,15.789,EuroNuke
+159,Hydro Plant 158,Zambia,Africa,Hydro,267,2004,-14.789,26.456,AfricaWind
+160,Wind Plant 159,Estonia,Europe,Wind,234,2022,58.789,24.234,AusRenew
+161,Solar Plant 160,Tunisia,Africa,Solar,156,2023,33.789,9.456,AfricaWind
+162,Gas Plant 161,Belarus,Europe,Gas,412,2002,53.789,27.456,EuroSolar AG
+163,Coal Plant 162,Bolivia,South America,Coal,312,1988,-17.234,-65.789,BrazilEnergy
+164,Nuclear Plant 163,Czech Republic,Europe,Nuclear,2000,1985,49.456,14.234,EuroSolar AG
+165,Hydro Plant 164,Ghana,Africa,Hydro,912,1965,7.456,-1.234,AfricaWind
+166,Wind Plant 165,New Zealand,Oceania,Wind,189,2018,-40.234,175.789,AusRenew
+167,Solar Plant 166,Bolivia,South America,Solar,112,2022,-16.789,-65.234,BrazilEnergy
+168,Gas Plant 167,Croatia,Europe,Gas,267,2010,45.789,15.456,EuroSolar AG
+169,Coal Plant 168,Ecuador,South America,Coal,234,1986,-2.456,-79.789,BrazilEnergy
+170,Nuclear Plant 169,Armenia,Asia,Nuclear,375,1980,40.789,44.456,DragonPower
+171,Hydro Plant 170,Nepal,Asia,Hydro,200,2016,27.789,85.456,DragonPower
+172,Wind Plant 171,Albania,Europe,Wind,134,2021,41.456,20.234,AusRenew
+173,Solar Plant 172,Sri Lanka,Asia,Solar,123,2021,7.234,80.789,DragonPower
+174,Gas Plant 173,Bosnia,Europe,Gas,245,2007,44.456,17.789,EuroSolar AG
+175,Coal Plant 174,Albania,Europe,Coal,178,1975,41.789,19.456,EuroNuke
+176,Nuclear Plant 175,Iran,Asia,Nuclear,1000,2011,28.789,57.234,DragonPower
+177,Hydro Plant 176,Bolivia,South America,Hydro,156,1995,-16.234,-67.789,BrazilEnergy
+178,Wind Plant 177,Slovenia,Europe,Wind,67,2022,46.456,14.789,AusRenew
+179,Solar Plant 178,Ecuador,South America,Solar,89,2022,-0.789,-78.456,BrazilEnergy
+180,Gas Plant 179,Kosovo,Europe,Gas,134,2015,42.789,21.456,EuroSolar AG
+181,Coal Plant 180,Montenegro,Europe,Coal,225,1978,42.456,19.234,EuroNuke
+182,Nuclear Plant 181,Netherlands,Europe,Nuclear,485,1997,51.789,4.567,HydroNorth
+183,Hydro Plant 182,Honduras,North America,Hydro,156,2014,14.789,-87.234,BrazilEnergy
+184,Wind Plant 183,Cyprus,Europe,Wind,78,2020,35.234,33.789,AusRenew
+185,Solar Plant 184,Guatemala,North America,Solar,112,2023,14.234,-90.789,BrazilEnergy
+186,Gas Plant 185,Luxembourg,Europe,Gas,156,2012,49.789,6.234,EuroSolar AG
+187,Coal Plant 186,Paraguay,South America,Coal,189,1982,-23.456,-57.789,BrazilEnergy
+188,Nuclear Plant 187,South Africa,Africa,Nuclear,1930,1984,-33.789,18.456,AfricaWind
+189,Hydro Plant 188,Cambodia,Asia,Hydro,123,2018,12.456,105.234,DragonPower
+190,Wind Plant 189,Malta,Europe,Wind,45,2021,35.789,14.456,AusRenew
+191,Solar Plant 190,Dominican Republic,North America,Solar,156,2022,18.789,-69.456,BrazilEnergy
+192,Gas Plant 191,Senegal,Africa,Gas,223,2011,14.789,-14.456,AfricaWind
+193,Coal Plant 192,Namibia,Africa,Coal,120,1976,-22.789,17.234,AfricaWind
+194,Nuclear Plant 193,Slovakia,Europe,Nuclear,1862,1985,48.456,17.234,EuroSolar AG
+195,Hydro Plant 194,Tanzania,Africa,Hydro,89,2013,-6.789,35.456,AfricaWind
+196,Wind Plant 195,Monaco,Europe,Wind,12,2022,43.789,7.456,EuroNuke
+197,Solar Plant 196,Iceland,Europe,Solar,78,2023,64.789,-18.456,HydroNorth
+198,Gas Plant 197,Botswana,Africa,Gas,134,2015,-22.456,24.789,AfricaWind
+199,Coal Plant 198,Gabon,Africa,Coal,156,1979,-0.789,11.456,AfricaWind
+200,Nuclear Plant 199,Lithuania,Europe,Nuclear,1185,1984,54.789,23.456,EuroNuke`;
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',');
+  return lines.slice(1).map(line => {
+    const vals = line.split(',');
+    return {
+      energy_type: vals[4],
+      capacity_mw: +vals[5],
+      year_built: +vals[6]
+    };
+  });
+}
+
+const data = parseCSV(CSV);
+
+const FOSSIL = new Set(['Coal','Gas','Nuclear']);
+const RENEWABLE = new Set(['Wind','Solar','Hydro']);
+
+const TYPE_COLOR = {
+  Nuclear: 'var(--nuclear)',
+  Gas: 'var(--gas)',
+  Wind: 'var(--wind)',
+  Coal: 'var(--coal)',
+  Solar: 'var(--solar)',
+  Hydro: 'var(--hydro)'
+};
+
+const tooltip = document.getElementById('tooltip');
+
+function showTip(e, html) {
+  tooltip.innerHTML = html;
+  tooltip.style.opacity = 1;
+  tooltip.style.left = (e.clientX + 14) + 'px';
+  tooltip.style.top = (e.clientY - 28) + 'px';
+}
+function hideTip() { tooltip.style.opacity = 0; }
+
+// Decade bins 
+const DECADES = [1975, 1985, 1995, 2005, 2015];
+function decadeLabel(y) {
+  if (y < 1985) return 1985;
+  if (y < 1995) return 1990;
+  if (y < 2005) return 2000;
+  if (y < 2015) return 2005;
+  return 2010;
+}
+
+const XTICKS = [1985, 1990, 2000, 2005, 2010, 2020];
+
+// SCATTOR PLOT
+(function() {
+  const W = document.getElementById('scatter').clientWidth || 400;
+  const H = 340;
+  const margin = {top: 20, right: 20, bottom: 60, left: 60};
+  const w = W - margin.left - margin.right;
+  const h = H - margin.top - margin.bottom;
+
+  const svg = d3.select('#scatter')
+    .append('svg').attr('width', W).attr('height', H)
+    .append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const x = d3.scaleLinear().domain([1975, 2025]).range([0, w]);
+  const y = d3.scaleLinear().domain([0, 2400]).range([h, 0]);
+
+  svg.append('g').attr('transform', `translate(0,${h})`).call(
+    d3.axisBottom(x).tickValues(XTICKS).tickFormat(d3.format('d'))
+  );
+  svg.append('g').call(d3.axisLeft(y).ticks(5));
+
+  // AXIS LABELS
+  svg.append('text').attr('class','axis-label')
+    .attr('x', w/2).attr('y', h+48).attr('text-anchor','middle').text('Year');
+  svg.append('text').attr('class','axis-label')
+    .attr('transform','rotate(-90)').attr('x', -h/2).attr('y', -44)
+    .attr('text-anchor','middle').text('Size');
+
+  // GRID
+  svg.append('g').attr('class','grid')
+    .call(d3.axisLeft(y).ticks(5).tickSize(-w).tickFormat(''))
+    .call(g => g.select('.domain').remove())
+    .call(g => g.selectAll('.tick line').attr('stroke','#f0ede8').attr('stroke-dasharray','3,3'));
+
+  
+  const showTypes = ['Nuclear','Gas','Wind','Coal'];
+  const filtered = data.filter(d => showTypes.includes(d.energy_type));
+
+  svg.selectAll('circle')
+    .data(filtered)
+    .join('circle')
+    .attr('cx', d => x(d.year_built))
+    .attr('cy', d => y(d.capacity_mw))
+    .attr('r', 7)
+    .attr('fill', 'none')
+    .attr('stroke', d => TYPE_COLOR[d.energy_type])
+    .attr('stroke-width', 2.2)
+    .attr('opacity', 0.75)
+    .on('mousemove', (e, d) => showTip(e, `${d.energy_type}<br>${d.year_built} · ${d.capacity_mw} MW`))
+    .on('mouseleave', hideTip);
+
+  // Legend
+  const leg = document.getElementById('scatter-legend');
+  showTypes.forEach(t => {
+    leg.innerHTML += `<div class="legend-item">
+      <div class="legend-dot" style="border-color:${TYPE_COLOR[t]};background:transparent"></div>
+      <span>${t}</span>
+    </div>`;
+  });
+})();
+
+// LINE CHART
+(function() {
+  const W = document.getElementById('linechart').clientWidth || 380;
+  const H = 220;
+  const margin = {top: 20, right: 20, bottom: 60, left: 60};
+  const w = W - margin.left - margin.right;
+  const h = H - margin.top - margin.bottom;
+
+
+  const binMap = {fossil: {}, renewable: {}};
+  XTICKS.forEach(t => { binMap.fossil[t] = []; binMap.renewable[t] = []; });
+
+  data.forEach(d => {
+    const bin = decadeLabel(d.year_built);
+    if (!binMap.fossil[bin] && !binMap.renewable[bin]) return;
+    if (FOSSIL.has(d.energy_type) && binMap.fossil[bin]) binMap.fossil[bin].push(d.capacity_mw);
+    if (RENEWABLE.has(d.energy_type) && binMap.renewable[bin]) binMap.renewable[bin].push(d.capacity_mw);
+  });
+
+  const fossilLine = XTICKS.map(t => ({year: t, val: d3.mean(binMap.fossil[t]) || 0}));
+  const renewableLine = XTICKS.map(t => ({year: t, val: d3.mean(binMap.renewable[t]) || 0}));
+
+  const allVals = [...fossilLine, ...renewableLine].map(d => d.val);
+  const yMax = d3.max(allVals) * 1.15;
+
+  const svg = d3.select('#linechart')
+    .append('svg').attr('width', W).attr('height', H)
+    .append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const x = d3.scaleLinear().domain([1983, 2022]).range([0, w]);
+  const y = d3.scaleLinear().domain([0, yMax]).range([h, 0]);
+
+  svg.append('g').attr('transform', `translate(0,${h})`).call(
+    d3.axisBottom(x).tickValues(XTICKS).tickFormat(d3.format('d'))
+  );
+  svg.append('g').call(d3.axisLeft(y).ticks(4));
+
+  svg.append('text').attr('class','axis-label')
+    .attr('x', w/2).attr('y', h+48).attr('text-anchor','middle').text('Year');
+  svg.append('text').attr('class','axis-label')
+    .attr('transform','rotate(-90)').attr('x', -h/2).attr('y', -44)
+    .attr('text-anchor','middle').text('Size');
+
+  const lineGen = d3.line().x(d => x(d.year)).y(d => y(d.val)).curve(d3.curveLinear);
+
+// FOSSIL BLACK
+  svg.append('path').datum(fossilLine)
+    .attr('fill','none').attr('stroke', 'var(--fossil-color)')
+    .attr('stroke-width', 2).attr('stroke-dasharray','6,4')
+    .attr('d', lineGen);
+
+  svg.selectAll('.fossil-dot').data(fossilLine).join('circle')
+    .attr('class','fossil-dot')
+    .attr('cx', d => x(d.year)).attr('cy', d => y(d.val))
+    .attr('r', 5).attr('fill','none').attr('stroke','var(--fossil-color)').attr('stroke-width',2)
+    .on('mousemove', (e, d) => showTip(e, `Fossil · ${d.year}<br>Avg: ${d.val.toFixed(0)} MW`))
+    .on('mouseleave', hideTip);
+
+  // RENEWABLE GREEN
+  svg.append('path').datum(renewableLine)
+    .attr('fill','none').attr('stroke', 'var(--renewable-color)')
+    .attr('stroke-width', 2).attr('stroke-dasharray','6,4')
+    .attr('d', lineGen);
+
+  svg.selectAll('.renew-dot').data(renewableLine).join('circle')
+    .attr('class','renew-dot')
+    .attr('cx', d => x(d.year)).attr('cy', d => y(d.val))
+    .attr('r', 5).attr('fill','none').attr('stroke','var(--renewable-color)').attr('stroke-width',2)
+    .on('mousemove', (e, d) => showTip(e, `Renewable · ${d.year}<br>Avg: ${d.val.toFixed(0)} MW`))
+    .on('mouseleave', hideTip);
+
+  const leg = document.getElementById('line-legend');
+  leg.innerHTML = `
+    <div class="legend-item"><div class="legend-line" style="background:var(--fossil-color);border-top:2px dashed var(--fossil-color);height:0"></div><span>fossil</span></div>
+    <div class="legend-item"><div class="legend-line" style="background:var(--renewable-color);border-top:2px dashed var(--renewable-color);height:0"></div><span>renewable</span></div>`;
+})();
+
+// BAR CHART
+(function() {
+  const W = document.getElementById('barchart').clientWidth || 380;
+  const H = 220;
+  const margin = {top: 20, right: 20, bottom: 60, left: 60};
+  const w = W - margin.left - margin.right;
+  const h = H - margin.top - margin.bottom;
+
+  const bins = {};
+  XTICKS.forEach(t => bins[t] = {fossil: 0, renewable: 0, count_f: 0, count_r: 0});
+
+  data.forEach(d => {
+    const bin = decadeLabel(d.year_built);
+    if (!bins[bin]) return;
+    if (FOSSIL.has(d.energy_type)) { bins[bin].fossil += d.capacity_mw; bins[bin].count_f++; }
+    if (RENEWABLE.has(d.energy_type)) { bins[bin].renewable += d.capacity_mw; bins[bin].count_r++; }
+  });
+
+  const barData = XTICKS.map(t => ({year: t, fossil: bins[t].fossil, renewable: bins[t].renewable}));
+  const yMax = d3.max(barData, d => Math.max(d.fossil, d.renewable)) * 1.15;
+
+  const svg = d3.select('#barchart')
+    .append('svg').attr('width', W).attr('height', H)
+    .append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const x0 = d3.scaleBand().domain(XTICKS).range([0, w]).padding(0.25);
+  const x1 = d3.scaleBand().domain(['fossil','renewable']).range([0, x0.bandwidth()]).padding(0.08);
+  const y = d3.scaleLinear().domain([0, yMax]).range([h, 0]);
+
+  svg.append('g').attr('transform', `translate(0,${h})`).call(
+    d3.axisBottom(x0).tickFormat(d3.format('d'))
+  );
+  svg.append('g').call(d3.axisLeft(y).ticks(4));
+
+  svg.append('text').attr('class','axis-label')
+    .attr('x', w/2).attr('y', h+48).attr('text-anchor','middle').text('Year');
+  svg.append('text').attr('class','axis-label')
+    .attr('transform','rotate(-90)').attr('x', -h/2).attr('y', -44)
+    .attr('text-anchor','middle').text('Size');
+
+  const groups = svg.selectAll('.bar-group')
+    .data(barData).join('g')
+    .attr('class','bar-group')
+    .attr('transform', d => `translate(${x0(d.year)},0)`);
+
+  groups.selectAll('.bar-fossil')
+    .data(d => [{val: d.fossil, year: d.year}])
+    .join('rect').attr('class','bar-fossil')
+    .attr('x', x1('fossil')).attr('width', x1.bandwidth())
+    .attr('y', d => y(d.val)).attr('height', d => h - y(d.val))
+    .attr('fill', 'var(--fossil-color)').attr('opacity', 0.75)
+    .on('mousemove', (e, d) => showTip(e, `Fossil · ${d.year}<br>Total: ${d.val.toFixed(0)} MW`))
+    .on('mouseleave', hideTip);
+
+  groups.selectAll('.bar-renew')
+    .data(d => [{val: d.renewable, year: d.year}])
+    .join('rect').attr('class','bar-renew')
+    .attr('x', x1('renewable')).attr('width', x1.bandwidth())
+    .attr('y', d => y(d.val)).attr('height', d => h - y(d.val))
+    .attr('fill', 'var(--renewable-color)').attr('opacity', 0.75)
+    .attr('stroke', 'var(--renewable-color)').attr('stroke-width', 1.5)
+    .on('mousemove', (e, d) => showTip(e, `Renewable · ${d.year}<br>Total: ${d.val.toFixed(0)} MW`))
+    .on('mouseleave', hideTip);
+
+  const leg = document.getElementById('bar-legend');
+  leg.innerHTML = `
+    <div class="legend-item"><div class="legend-bar" style="background:var(--fossil-color);opacity:0.75"></div><span>fossil</span></div>
+    <div class="legend-item"><div class="legend-bar" style="background:var(--renewable-color);opacity:0.75"></div><span>renewable</span></div>`;
+})();
+</script>
+</body>
+</html>
